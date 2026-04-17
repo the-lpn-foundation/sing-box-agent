@@ -1,0 +1,6 @@
+{
+  "subId": "user-uuid-123",
+  "email": "user@example.com",
+  "trafficLimit": 10737418240,
+  "expiry": 1735689600
+}

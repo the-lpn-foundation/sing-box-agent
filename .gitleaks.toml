@@ -1,0 +1,32 @@
+# Gitleaks configuration for sing-box-agent.
+# Extends the default rules with an allowlist for obvious test fixtures.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Test fixtures and documentation placeholders"
+regexTarget = "match"
+regexes = [
+    # Obvious placeholder tokens used in unit/integration tests.
+    '''test-token-32-characters-long-.*''',
+    '''test-secret-32-characters-long-.*''',
+    '''e2e-test-token''',
+    '''e2e-test-secret-key-12345''',
+    '''test-secret-for-integration-testing''',
+    '''test-token-for-integration-testing-minimum-32-chars''',
+    # README / docs placeholders.
+    '''CHANGE-ME-MIN-32-CHARACTERS-LONG-TOKEN''',
+    '''CHANGE-ME-HMAC-SECRET-KEY''',
+    '''REPLACE_WITH_.*''',
+    '''GENERATE_.*''',
+]
+
+paths = [
+    # Test files never hold real credentials.
+    '''.*_test\.go$''',
+    '''^test/''',
+    # Example configs intentionally show placeholders.
+    '''^deploy/example/''',
+    # Upstream-release lockfiles occasionally contain key-shaped hashes.
+    '''^go\.sum$''',
+]

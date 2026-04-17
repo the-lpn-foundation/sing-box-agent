@@ -1,0 +1,1058 @@
+openapi: 3.0.3
+info:
+  title: sing-box-agent API
+  version: 1.2.0
+  description: |
+    A lightweight Go service that embeds sing-box as a library and provides a REST API for remote management.
+    Designed to replace 3x-ui panels and SSH-based config management while maintaining multi-server architecture.
+
+    **Key Features:**
+    - Runtime user management without process restarts
+    - Full protocol support via sing-box (VLESS, Hysteria2, ShadowTLS, TUIC, etc.)
+    - Multi-server architecture — one agent per VPN server, controlled centrally
+    - Prometheus metrics export for Grafana dashboards
+    - Zero-dependency deployment (single binary)
+    - State consistency — API is source of truth, agent applies desired state
+
+  contact:
+    name: sing-box-agent
+  license:
+    name: MIT
+
+servers:
+  - url: http://localhost:8080
+    description: Local development
+  - url: https://agent.example.com
+    description: Production server
+
+security:
+  - BearerAuth: []
+  - RequestSigning: []
+
+tags:
+  - name: Health
+    description: Health check endpoints
+  - name: Inbounds
+    description: Inbound configuration management
+  - name: Users
+    description: User management within inbounds
+  - name: Stats
+    description: Traffic and connection statistics
+  - name: Sync
+    description: State synchronization
+  - name: Core
+    description: Core sing-box operations
+  - name: Subscription
+    description: Client subscription management
+
+paths:
+  /healthz:
+    get:
+      tags:
+        - Health
+      summary: Health check
+      description: Basic health check endpoint
+      operationId: healthz
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+              example:
+                success: true
+                data:
+                  status: healthy
+
+  /readyz:
+    get:
+      tags:
+        - Health
+      summary: Readiness check
+      description: Readiness check including sync status
+      operationId: readyz
+      responses:
+        '200':
+          description: Service is ready
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+              example:
+                success: true
+                data:
+                  ready: true
+                  sync_status: synced
+        '503':
+          description: Service not ready
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                error:
+                  code: SERVICE_UNAVAILABLE
+                  message: Agent not ready
+
+  /status:
+    get:
+      tags:
+        - Health
+      summary: Server status
+      description: Detailed server status including sync state
+      operationId: status
+      responses:
+        '200':
+          description: Server status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+              example:
+                success: true
+                data:
+                  version: "1.2.0"
+                  singbox_version: "1.12.21"
+                  sync_status: synced
+                  sync_timestamp: 1735689600
+                  uptime_seconds: 3600
+
+  /inbounds:
+    get:
+      tags:
+        - Inbounds
+      summary: List all inbounds
+      description: Retrieve all configured inbound connections
+      operationId: listInbounds
+      responses:
+        '200':
+          description: List of inbounds
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Inbound'
+    post:
+      tags:
+        - Inbounds
+      summary: Create inbound
+      description: Create a new inbound configuration
+      operationId: createInbound
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InboundCreate'
+      responses:
+        '201':
+          description: Inbound created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /inbounds/{tag}:
+    get:
+      tags:
+        - Inbounds
+      summary: Get inbound
+      description: Retrieve a specific inbound configuration by tag
+      operationId: getInbound
+      parameters:
+        - name: tag
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Inbound tag identifier
+      responses:
+        '200':
+          description: Inbound details
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Inbound'
+        '404':
+          description: Inbound not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                error:
+                  code: INBOUND_NOT_FOUND
+                  message: Inbound 'vless-reality' not found
+    put:
+      tags:
+        - Inbounds
+      summary: Update inbound
+      description: Update an existing inbound configuration
+      operationId: updateInbound
+      parameters:
+        - name: tag
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Inbound tag identifier
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InboundUpdate'
+      responses:
+        '200':
+          description: Inbound updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+        '404':
+          description: Inbound not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    delete:
+      tags:
+        - Inbounds
+      summary: Delete inbound
+      description: Delete an inbound configuration
+      operationId: deleteInbound
+      parameters:
+        - name: tag
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Inbound tag identifier
+      responses:
+        '200':
+          description: Inbound deleted successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+        '404':
+          description: Inbound not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /inbounds/{tag}/users:
+    get:
+      tags:
+        - Users
+      summary: List users
+      description: Retrieve all users for a specific inbound
+      operationId: listUsers
+      parameters:
+        - name: tag
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Inbound tag identifier
+      responses:
+        '200':
+          description: List of users
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/User'
+        '404':
+          description: Inbound not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    post:
+      tags:
+        - Users
+      summary: Create user
+      description: Create a new user for the specified inbound
+      operationId: createUser
+      parameters:
+        - name: tag
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Inbound tag identifier
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserCreate'
+      responses:
+        '201':
+          description: User created successfully
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/UserCreateResponse'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: User already exists or idempotency conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /inbounds/{tag}/users/{subId}:
+    get:
+      tags:
+        - Users
+      summary: Get user
+      description: Retrieve a specific user by subscription ID
+      operationId: getUser
+      parameters:
+        - name: tag
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Inbound tag identifier
+        - name: subId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Subscription ID (primary identifier)
+      responses:
+        '200':
+          description: User details
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/User'
+        '404':
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                error:
+                  code: USER_NOT_FOUND
+                  message: User 'device-123' not found
+    put:
+      tags:
+        - Users
+      summary: Update user
+      description: Update an existing user configuration
+      operationId: updateUser
+      parameters:
+        - name: tag
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Inbound tag identifier
+        - name: subId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Subscription ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserUpdate'
+      responses:
+        '200':
+          description: User updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+        '404':
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    delete:
+      tags:
+        - Users
+      summary: Delete user
+      description: Delete a user from the inbound
+      operationId: deleteUser
+      parameters:
+        - name: tag
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Inbound tag identifier
+        - name: subId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Subscription ID
+      responses:
+        '200':
+          description: User deleted successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+        '404':
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /stats/traffic:
+    get:
+      tags:
+        - Stats
+      summary: Traffic statistics
+      description: Retrieve cumulative traffic statistics for all inbounds
+      operationId: getTrafficStats
+      responses:
+        '200':
+          description: Traffic statistics
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/TrafficStats'
+
+  /stats/online:
+    get:
+      tags:
+        - Stats
+      summary: Online users
+      description: Retrieve list of currently online users
+      operationId: getOnlineUsers
+      responses:
+        '200':
+          description: Online users
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/OnlineUser'
+
+  /sync/desired-state:
+    post:
+      tags:
+        - Sync
+      summary: Apply desired state
+      description: Push desired state from central API to agent
+      operationId: syncDesiredState
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DesiredState'
+      responses:
+        '200':
+          description: State applied successfully
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/SyncResult'
+        '409':
+          description: Version conflict or idempotency conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Sync failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /sync/status:
+    get:
+      tags:
+        - Sync
+      summary: Sync status
+      description: Retrieve current synchronization status
+      operationId: getSyncStatus
+      responses:
+        '200':
+          description: Sync status
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/SyncStatus'
+
+  /core/reload:
+    post:
+      tags:
+        - Core
+      summary: Reload configuration
+      description: Reload sing-box configuration from file
+      operationId: reloadConfig
+      responses:
+        '200':
+          description: Configuration reloaded successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+
+  /core/restart:
+    post:
+      tags:
+        - Core
+      summary: Restart sing-box
+      description: Restart the sing-box core
+      operationId: restartCore
+      responses:
+        '200':
+          description: Core restarted successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+
+  /core/config:
+    get:
+      tags:
+        - Core
+      summary: Get configuration
+      description: Retrieve current sing-box configuration (sensitive fields redacted)
+      operationId: getConfig
+      responses:
+        '200':
+          description: Current configuration
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        description: Sing-box configuration with sensitive fields redacted
+
+  /subscription/generate:
+    post:
+      tags:
+        - Subscription
+      summary: Generate client config
+      description: Generate client configuration for a user
+      operationId: generateSubscription
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - subId
+                - inboundTag
+              properties:
+                subId:
+                  type: string
+                  description: Subscription ID
+                inboundTag:
+                  type: string
+                  description: Inbound tag
+                format:
+                  type: string
+                  enum: [vless, vmess, trojan, hysteria2, tuic]
+                  default: vless
+                  description: Output format
+      responses:
+        '200':
+          description: Configuration generated successfully
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/SubscriptionConfig'
+
+  /subscription/{subId}:
+    get:
+      tags:
+        - Subscription
+      summary: Get subscription
+      description: Retrieve subscription for a user
+      operationId: getSubscription
+      parameters:
+        - name: subId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Subscription ID
+      responses:
+        '200':
+          description: Subscription details
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Subscription'
+        '404':
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Bearer token for authentication (minimum 32 characters)
+    RequestSigning:
+      type: apiKey
+      in: header
+      name: X-Signature
+      description: |
+        HMAC-SHA256 signature for request authentication
+
+        **Required Headers:**
+        - X-Signature: HMAC-SHA256(canonical_string, secret)
+        - X-Timestamp: Unix seconds (reject if |server_time - timestamp| > 300s)
+        - X-Nonce: UUID v4 (stored in LRU cache, 24h TTL, 10k max entries)
+
+        **Canonicalization:**
+        ```
+        canonical_string = "{nonce}\\n{timestamp}\\n{method}\\n{path}\\n{body_hash}"
+        body_hash = SHA256(request_body).hexdigest()  // empty string if no body
+        signature = HMAC-SHA256(canonical_string, secret).hexdigest()
+        ```
+
+  schemas:
+    SuccessResponse:
+      type: object
+      required:
+        - success
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          type: object
+          description: Response payload
+
+    ErrorResponse:
+      type: object
+      required:
+        - success
+        - error
+      properties:
+        success:
+          type: boolean
+          example: false
+        error:
+          type: object
+          required:
+            - code
+            - message
+          properties:
+            code:
+              type: string
+              enum:
+                - INVALID_REQUEST
+                - UNAUTHORIZED
+                - REPLAY_DETECTED
+                - INBOUND_NOT_FOUND
+                - USER_NOT_FOUND
+                - USER_EXISTS
+                - IDEMPOTENCY_CONFLICT
+                - VERSION_CONFLICT
+                - SYNC_FAILED
+                - SERVICE_UNAVAILABLE
+              description: Error code
+            message:
+              type: string
+              description: Human-readable error message
+
+    Inbound:
+      type: object
+      required:
+        - tag
+        - type
+        - listen
+        - listen_port
+      properties:
+        tag:
+          type: string
+          description: Unique inbound identifier
+        type:
+          type: string
+          enum: [vless, vmess, trojan, hysteria2, shadowtls, tuic]
+          description: Protocol type
+        listen:
+          type: string
+          description: Listen address (e.g., "0.0.0.0")
+        listen_port:
+          type: integer
+          description: Listen port
+        users:
+          type: array
+          items:
+            $ref: '#/components/schemas/User'
+        tls:
+          type: object
+          description: TLS configuration
+        transport:
+          type: object
+          description: Transport layer configuration
+
+    InboundCreate:
+      type: object
+      required:
+        - tag
+        - type
+        - listen
+        - listen_port
+      properties:
+        tag:
+          type: string
+          description: Unique inbound identifier
+        type:
+          type: string
+          enum: [vless, vmess, trojan, hysteria2, shadowtls, tuic]
+        listen:
+          type: string
+        listen_port:
+          type: integer
+        tls:
+          type: object
+        transport:
+          type: object
+
+    InboundUpdate:
+      type: object
+      properties:
+        tls:
+          type: object
+        transport:
+          type: object
+
+    User:
+      type: object
+      required:
+        - subId
+        - uuid
+      properties:
+        subId:
+          type: string
+          description: Subscription ID (primary identifier)
+        uuid:
+          type: string
+          format: uuid
+          description: VLESS/VMess UUID (protocol-specific)
+        name:
+          type: string
+          description: User display name
+        email:
+          type: string
+          description: User email
+        flow:
+          type: string
+          description: VLESS flow (e.g., "xtls-rprx-vision")
+        enabled:
+          type: boolean
+          default: true
+        traffic:
+          type: object
+          properties:
+            upload:
+              type: integer
+              description: Cumulative upload bytes
+            download:
+              type: integer
+              description: Cumulative download bytes
+            reset_at:
+              type: string
+              format: date-time
+              description: Last counter reset timestamp
+
+    UserCreate:
+      type: object
+      required:
+        - subId
+        - uuid
+      properties:
+        subId:
+          type: string
+          description: Subscription ID
+        uuid:
+          type: string
+          format: uuid
+          description: VLESS/VMess UUID
+        name:
+          type: string
+        email:
+          type: string
+        flow:
+          type: string
+        enabled:
+          type: boolean
+          default: true
+
+    UserUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+        email:
+          type: string
+        flow:
+          type: string
+        enabled:
+          type: boolean
+
+    UserCreateResponse:
+      type: object
+      required:
+        - subId
+        - link
+      properties:
+        subId:
+          type: string
+          description: Subscription ID
+        link:
+          type: string
+          description: Generated connection link
+
+    TrafficStats:
+      type: object
+      required:
+        - inbounds
+        - counters_reset_at
+      properties:
+        inbounds:
+          type: array
+          items:
+            type: object
+            required:
+              - tag
+              - upload
+              - download
+            properties:
+              tag:
+                type: string
+                description: Inbound tag
+              upload:
+                type: integer
+                description: Cumulative upload bytes
+              download:
+                type: integer
+                description: Cumulative download bytes
+        counters_reset_at:
+          type: string
+          format: date-time
+          description: Last counter reset timestamp
+
+    OnlineUser:
+      type: object
+      required:
+        - subId
+        - inboundTag
+        - connected_at
+      properties:
+        subId:
+          type: string
+          description: Subscription ID
+        inboundTag:
+          type: string
+          description: Inbound tag
+        connected_at:
+          type: string
+          format: date-time
+          description: Connection timestamp
+        remote_addr:
+          type: string
+          description: Client IP address
+
+    DesiredState:
+      type: object
+      required:
+        - version
+        - inbounds
+      properties:
+        version:
+          type: integer
+          description: Monotonically increasing version number
+        inbounds:
+          type: array
+          items:
+            $ref: '#/components/schemas/Inbound'
+
+    SyncResult:
+      type: object
+      required:
+        - success
+        - version
+      properties:
+        success:
+          type: boolean
+        version:
+          type: integer
+          description: Applied version
+        inbounds_updated:
+          type: integer
+          description: Number of inbounds updated
+        users_added:
+          type: integer
+          description: Number of users added
+        users_removed:
+          type: integer
+          description: Number of users removed
+
+    SyncStatus:
+      type: object
+      required:
+        - state
+        - version
+      properties:
+        state:
+          type: string
+          enum: [synced, syncing, error]
+          description: Current sync state
+        version:
+          type: integer
+          description: Current version
+        last_sync_at:
+          type: string
+          format: date-time
+          description: Last successful sync timestamp
+        error:
+          type: string
+          description: Last error message (if state is error)
+
+    SubscriptionConfig:
+      type: object
+      required:
+        - config
+        - link
+      properties:
+        config:
+          type: object
+          description: Client configuration object
+        link:
+          type: string
+          description: Connection link (e.g., vless://...)
+
+    Subscription:
+      type: object
+      required:
+        - subId
+        - configs
+      properties:
+        subId:
+          type: string
+          description: Subscription ID
+        configs:
+          type: array
+          items:
+            type: object
+            description: Available configurations for different protocols
+        updated_at:
+          type: string
+          format: date-time
+          description: Last update timestamp
+
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      description: |
+        Idempotency key for safe retries
+
+        **Behavior:**
+        - Same key + same payload: Return original response (replay)
+        - Same key + different payload: Return 409 IDEMPOTENCY_CONFLICT
+        - New key: Normal processing, cached for 24h
+
+        Keys are per-server scope, stored in LRU cache (24h TTL, 10k max entries)
+      required: false
+      schema:
+        type: string
+      example: device-123-create-user

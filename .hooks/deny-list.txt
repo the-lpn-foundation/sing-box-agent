@@ -1,0 +1,9 @@
+# Regex patterns matched against full command line input.
+# One pattern per line. Empty lines and comments are ignored.
+
+(^|[[:space:]])rm[[:space:]]+-rf([[:space:]]|$)
+(^|[[:space:]])dd([[:space:]]|$)
+(^|[[:space:]])mkfs(\.[a-zA-Z0-9_+-]+)?([[:space:]]|$)
+(^|[[:space:]])chmod[[:space:]]+-R[[:space:]]+777([[:space:]]|$)
+git[[:space:]]+push[[:space:]].*--force([[:space:]]|$)
+git[[:space:]]+reset[[:space:]]+--hard([[:space:]]|$)

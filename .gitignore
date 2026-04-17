@@ -1,0 +1,48 @@
+# Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Local build artifacts (compiled binaries in repo root)
+/agent
+/sing-box-agent
+/sing-box-agent-linux
+/deploy/*/sing-box-agent
+/deploy/*/sing-box-agent-linux
+
+# Test binaries and coverage
+*.test
+*.out
+/coverage/
+
+# Go workspace
+go.work
+go.work.sum
+vendor/
+
+# Distribution / packaging
+dist/
+
+# Env files
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+
+# macOS / editor metadata
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Agent backup files
+*.agent.bak
+
+# Internal planning / not for public repo
+/.sisyphus/
+/vpn-server-*.md
+/docs/vpn-server-*.md

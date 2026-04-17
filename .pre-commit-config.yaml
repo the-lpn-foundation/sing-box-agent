@@ -1,0 +1,27 @@
+repos:
+  - repo: local
+    hooks:
+      - id: gofumpt-check
+        name: gofumpt check (no auto-fix)
+        language: system
+        entry: >-
+          bash -c 'if ! command -v gofumpt >/dev/null 2>&1; then echo "[hook:gofumpt-check] gofumpt is missing. remediation: go install mvdan.cc/gofumpt@latest"; exit 1; fi; files="$(gofumpt -l .)"; if [ -n "$files" ]; then echo "[hook:gofumpt-check] formatting drift detected in:"; printf "%s\n" "$files"; echo "[hook:gofumpt-check] remediation: run gofumpt -w . and re-stage changes"; exit 1; fi'
+        pass_filenames: false
+      - id: go-vet
+        name: go vet
+        language: system
+        entry: >-
+          bash -c 'go vet ./... || { echo "[hook:go-vet] remediation: fix reported vet issues before commit"; exit 1; }'
+        pass_filenames: false
+
+  - repo: https://github.com/golangci/golangci-lint
+    rev: v1.64.5
+    hooks:
+      - id: golangci-lint
+        args: ["--timeout=5m", "--config=.golangci.yml"]
+
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.24.2
+    hooks:
+      - id: gitleaks
+        args: ["--verbose"]

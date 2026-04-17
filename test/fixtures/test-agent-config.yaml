@@ -1,0 +1,6 @@
+api_port: 18080
+metrics_port: 19090
+token: "test-token-for-integration-testing-minimum-32-chars"
+secret: "test-secret-for-integration-testing"
+singbox_config_path: "test/fixtures/singbox_config.json"
+log_level: debug

@@ -1,0 +1,35 @@
+.git
+.github
+.sisyphus
+.tools
+.hooks
+.pre-commit-config.yaml
+
+# Local builds and test artefacts
+agent
+sing-box-agent
+sing-box-agent-linux
+*.test
+*.out
+coverage*
+dist/
+deploy/*/sing-box-agent
+deploy/*/sing-box-agent-linux
+
+# Editor / OS metadata
+.DS_Store
+.idea
+.vscode
+
+# Backups
+*.agent.bak
+*.bak
+
+# Env files
+.env
+.env.*
+!.env.example
+
+# Internal docs not needed at build time
+docs/vpn-server-*.md
+vpn-server-*.md

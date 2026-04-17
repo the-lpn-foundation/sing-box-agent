@@ -1,0 +1,41 @@
+# Local development / demonstration stack.
+# Build and run with:
+#   docker compose -f deploy/docker/docker-compose.yml up --build
+#
+# On first run, generate a token and HMAC secret and write them into the
+# mounted agent-config.yaml:
+#   openssl rand -hex 32    # use twice: once for `token`, once for `secret`
+
+services:
+  sing-box-agent:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+      args:
+        VERSION: "local"
+    image: sing-box-agent:local
+    container_name: sing-box-agent
+    restart: unless-stopped
+    ports:
+      - "8080:8080"   # REST API
+      - "9090:9090"   # Prometheus metrics
+      # Expose whatever inbound ports your sing-box config uses, e.g.:
+      # - "443:443/udp"
+      # - "8443:8443"
+    volumes:
+      - ../example/agent-config.yaml:/etc/sing-box-agent/config.yaml:ro
+      - ../example/sing-box-config.json:/etc/sing-box/config.json:ro
+      - agent-state:/var/lib/sing-box-agent
+    environment:
+      SINGBOX_AGENT_LOG_LEVEL: info
+      SINGBOX_AGENT_RELOAD_STRATEGY: signal
+      SINGBOX_AGENT_RELOAD_TARGET: /run/sing-box.pid
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+volumes:
+  agent-state:

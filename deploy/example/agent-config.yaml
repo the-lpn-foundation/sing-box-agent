@@ -1,0 +1,40 @@
+# sing-box-agent configuration
+# Copy to /etc/sing-box-agent/config.yaml and edit before starting the service.
+
+# REST API port (agent listens here for management requests).
+api_port: 8080
+
+# Prometheus metrics port (/metrics endpoint).
+metrics_port: 9090
+
+# Bearer token for the Authorization header. MUST be at least 32 characters.
+# Generate with: openssl rand -hex 32
+token: "CHANGE-ME-MIN-32-CHARACTERS-LONG-TOKEN"
+
+# HMAC-SHA256 secret for request signing.
+# Generate with: openssl rand -hex 32
+secret: "CHANGE-ME-HMAC-SECRET-KEY"
+
+# Path to the sing-box core configuration file managed by this agent.
+singbox_config_path: "/etc/sing-box/config.json"
+
+# Log level: debug | info | warn | error
+log_level: "info"
+
+# How the agent reloads sing-box after applying desired-state changes:
+#   systemctl - run `systemctl restart <service>` (default; requires systemd)
+#   signal    - send SIGHUP to the PID listed in a PID file (works in Docker)
+#   command   - run an arbitrary shell command
+reload_strategy: "systemctl"
+reload_target: "sing-box"              # service name (systemctl) | PID file path (signal)
+# reload_command: "/usr/local/bin/reload-singbox.sh"   # used when strategy=command
+
+# TLS for the agent API (highly recommended in production).
+# Provide BOTH cert and key, or leave both empty to serve plain HTTP.
+# tls_cert_path: "/etc/letsencrypt/live/example.com/fullchain.pem"
+# tls_key_path:  "/etc/letsencrypt/live/example.com/privkey.pem"
+
+# Optional upstream control-plane integration.
+# When set, the agent will pull desired state and push traffic stats here.
+# fastify_base_url: "https://control-plane.example.com"
+# server_id: "my-server-01"

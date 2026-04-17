@@ -1,0 +1,9 @@
+{
+  "success": true,
+  "data": {
+    "tag": "trojan-in",
+    "type": "trojan",
+    "listen": "0.0.0.0:443",
+    "enabled": true
+  }
+}

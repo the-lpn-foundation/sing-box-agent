@@ -1,0 +1,63 @@
+{
+  "dns": {
+    "rules": [
+      {
+        "query_type": [
+          "A",
+          "AAAA"
+        ],
+        "server": "cloudflare"
+      }
+    ],
+    "servers": [
+      {
+        "address": "https://1.1.1.1/dns-query",
+        "tag": "cloudflare"
+      },
+      {
+        "address": "223.5.5.5",
+        "tag": "alidns"
+      }
+    ]
+  },
+  "experimental": {
+    "cache_file": {
+      "path": "/tmp/sing-box-cache.db",
+      "store": true
+    }
+  },
+  "inbounds": [],
+  "log": {
+    "disabled": false,
+    "level": "info",
+    "output": "stdout"
+  },
+  "outbounds": [
+    {
+      "tag": "direct",
+      "type": "direct"
+    },
+    {
+      "tag": "block",
+      "type": "block"
+    }
+  ],
+  "route": {
+    "auto_detect_interface": true,
+    "final": "block",
+    "rules": [
+      {
+        "inbound": [
+          "vless-reality"
+        ],
+        "outbound": "direct"
+      },
+      {
+        "inbound": [
+          "hysteria2"
+        ],
+        "outbound": "direct"
+      }
+    ]
+  }
+}
