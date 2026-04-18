@@ -15,7 +15,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/lenya/sing-box-agent/internal/store"
+	"github.com/oglenyaboss/sing-box-agent/internal/store"
 )
 
 func TestIdempotencyMiddleware_NilStore(t *testing.T) {

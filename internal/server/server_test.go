@@ -16,8 +16,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/lenya/sing-box-agent/internal/config"
-	"github.com/lenya/sing-box-agent/internal/singbox"
+	"github.com/oglenyaboss/sing-box-agent/internal/config"
+	"github.com/oglenyaboss/sing-box-agent/internal/singbox"
 )
 
 // testConfig returns a valid test configuration

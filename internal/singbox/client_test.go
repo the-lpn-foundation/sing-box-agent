@@ -13,7 +13,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/lenya/sing-box-agent/internal/models"
+	"github.com/oglenyaboss/sing-box-agent/internal/models"
 )
 
 func TestNewConfigClient(t *testing.T) {
@@ -1598,9 +1598,11 @@ func TestHelperFunctions(t *testing.T) {
 }
 
 func TestConfigClient_saveAndReload(t *testing.T) {
-	// Skip in CI - systemctl requires auth
-	if os.Getenv("CI") != "" {
-		t.Skip("Skipping in CI - systemctl requires authentication")
+	// This test triggers an async systemctl reload when a Wrapper is set.
+	// Skip by default so `go test ./...` works on any Linux dev box without
+	// requiring sudo/polkit. Opt in with SINGBOX_AGENT_LIVE_SYSTEMCTL=1.
+	if os.Getenv("SINGBOX_AGENT_LIVE_SYSTEMCTL") == "" {
+		t.Skip("skipping; set SINGBOX_AGENT_LIVE_SYSTEMCTL=1 to run")
 	}
 
 	tests := []struct {

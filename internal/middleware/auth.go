@@ -11,7 +11,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/lenya/sing-box-agent/internal/auth"
+	"github.com/oglenyaboss/sing-box-agent/internal/auth"
 )
 
 const (

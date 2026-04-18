@@ -1,0 +1,93 @@
+name: Bug report
+description: Something is broken or behaves unexpectedly
+title: "[bug] "
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a bug. Please provide enough
+        detail to let a maintainer reproduce the problem on their own box.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: A clear description of the bug.
+      placeholder: |
+        I called POST /inbounds/<tag>/users and got a 500 with an empty body.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect to happen?
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Reproduction
+      description: Minimal steps (or a script) to reproduce. Redact real tokens.
+      placeholder: |
+        1. Start the agent with `./sing-box-agent -config agent-config.yaml`
+        2. curl -X POST … -H 'Authorization: Bearer …'
+        3. Observe the 500 response
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Agent logs
+      description: The JSON log lines around the failure, with any secrets removed.
+      render: text
+
+  - type: input
+    id: agent-version
+    attributes:
+      label: sing-box-agent version
+      description: "Output of `sing-box-agent -version`, or the git SHA you built from."
+    validations:
+      required: true
+
+  - type: input
+    id: singbox-version
+    attributes:
+      label: sing-box version
+      description: "Output of `sing-box version`."
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: OS / distro / architecture
+      placeholder: "Ubuntu 24.04, amd64"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: reload-strategy
+    attributes:
+      label: Reload strategy in use
+      options:
+        - systemctl
+        - signal
+        - command
+        - n/a
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: I have done the basic hygiene
+      options:
+        - label: I searched existing issues and did not find a duplicate.
+          required: true
+        - label: The logs / commands I pasted above have been redacted of real tokens, HMAC secrets, passwords, and server IPs.
+          required: true

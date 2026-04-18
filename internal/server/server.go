@@ -14,13 +14,13 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/lenya/sing-box-agent/internal/auth"
-	"github.com/lenya/sing-box-agent/internal/client"
-	"github.com/lenya/sing-box-agent/internal/config"
-	"github.com/lenya/sing-box-agent/internal/handlers"
-	"github.com/lenya/sing-box-agent/internal/middleware"
-	"github.com/lenya/sing-box-agent/internal/singbox"
-	syncpkg "github.com/lenya/sing-box-agent/internal/sync"
+	"github.com/oglenyaboss/sing-box-agent/internal/auth"
+	"github.com/oglenyaboss/sing-box-agent/internal/client"
+	"github.com/oglenyaboss/sing-box-agent/internal/config"
+	"github.com/oglenyaboss/sing-box-agent/internal/handlers"
+	"github.com/oglenyaboss/sing-box-agent/internal/middleware"
+	"github.com/oglenyaboss/sing-box-agent/internal/singbox"
+	syncpkg "github.com/oglenyaboss/sing-box-agent/internal/sync"
 )
 
 const (

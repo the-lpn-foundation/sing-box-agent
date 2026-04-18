@@ -11,8 +11,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/lenya/sing-box-agent/internal/models"
-	"github.com/lenya/sing-box-agent/internal/singbox"
+	"github.com/oglenyaboss/sing-box-agent/internal/models"
+	"github.com/oglenyaboss/sing-box-agent/internal/singbox"
 )
 
 // mockSingBox is a manual mock for singbox.SingBox interface

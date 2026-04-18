@@ -86,8 +86,8 @@ test-fuzz: ## Run fuzz tests
 	@go test -fuzz=Fuzz -fuzztime=30s ./test/fuzz/... || echo "No fuzz tests found or fuzz tests passed"
 
 build:
-	@echo "Building packages..."
-	GOFLAGS="$(DEFAULT_GOFLAGS)" go build -ldflags "$(BUILD_LDFLAGS)" ./...
+	@echo "Building sing-box-agent..."
+	GOFLAGS="$(DEFAULT_GOFLAGS)" go build -ldflags "$(BUILD_LDFLAGS)" -o sing-box-agent ./cmd/agent
 
 version:
 	@echo "Version: $(VERSION)"

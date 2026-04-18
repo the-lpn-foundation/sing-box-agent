@@ -11,8 +11,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/lenya/sing-box-agent/internal/models"
-	syncpkg "github.com/lenya/sing-box-agent/internal/sync"
+	"github.com/oglenyaboss/sing-box-agent/internal/models"
+	syncpkg "github.com/oglenyaboss/sing-box-agent/internal/sync"
 )
 
 const (

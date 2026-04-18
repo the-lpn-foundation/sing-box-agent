@@ -18,7 +18,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/lenya/sing-box-agent/internal/auth"
+	"github.com/oglenyaboss/sing-box-agent/internal/auth"
 )
 
 func TestAuthMiddleware(t *testing.T) {

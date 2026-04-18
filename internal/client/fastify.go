@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lenya/sing-box-agent/internal/models"
+	"github.com/oglenyaboss/sing-box-agent/internal/models"
 )
 
 const defaultTimeout = 10 * time.Second

@@ -8,8 +8,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/lenya/sing-box-agent/internal/models"
-	"github.com/lenya/sing-box-agent/internal/singbox"
+	"github.com/oglenyaboss/sing-box-agent/internal/models"
+	"github.com/oglenyaboss/sing-box-agent/internal/singbox"
 )
 
 type ConfigManager struct {

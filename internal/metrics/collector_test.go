@@ -669,12 +669,6 @@ func TestRegisterGauge(t *testing.T) {
 		require.NoError(t, err)
 		assert.Same(t, result1, result2)
 	})
-
-	t.Run("returns error for wrong type", func(t *testing.T) {
-		// Counter cannot be registered as gauge - this will fail at compile time
-		// Skip this test since there's no registerCounter function
-		t.Skip("registerCounter function does not exist")
-	})
 }
 
 func TestAsAlreadyRegistered(t *testing.T) {

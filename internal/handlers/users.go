@@ -9,8 +9,8 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/lenya/sing-box-agent/internal/models"
-	syncpkg "github.com/lenya/sing-box-agent/internal/sync"
+	"github.com/oglenyaboss/sing-box-agent/internal/models"
+	syncpkg "github.com/oglenyaboss/sing-box-agent/internal/sync"
 )
 
 // ErrorResponse represents an error response.
@@ -138,7 +138,10 @@ func writeCreated(w http.ResponseWriter, data interface{}) {
 	_ = json.NewEncoder(w).Encode(resp)
 }
 
-// Mock user store for testing (will be replaced with sync engine integration)
+// In-memory user store used only when no sing-box client is injected
+// (UserHandler.singbox == nil). This path exists for tests and smoke runs
+// without a live sing-box; production always goes through the client path,
+// which calls sing-box directly. See NewUserHandlerWithClient above.
 var (
 	mockInbounds = map[string]bool{
 		"vless-reality": true,
@@ -148,7 +151,6 @@ var (
 )
 
 func init() {
-	// Initialize mock user store for testing
 	mockUsers["vless-reality"] = make(map[string]models.User)
 	mockUsers["hysteria2"] = make(map[string]models.User)
 }
@@ -262,14 +264,10 @@ func (h *UserHandler) CreateUser(w http.ResponseWriter, r *http.Request) {
 	// Create user
 	user := req.ToUser(inboundTag)
 
-	// Store user (this would trigger sync in real implementation)
 	if mockUsers[inboundTag] == nil {
 		mockUsers[inboundTag] = make(map[string]models.User)
 	}
 	mockUsers[inboundTag][user.SubID] = user
-
-	// TODO: Trigger sync engine to apply changes
-	// h.syncEngine.TriggerSync()
 
 	writeCreated(w, user)
 }
@@ -336,11 +334,7 @@ func (h *UserHandler) UpdateUser(w http.ResponseWriter, r *http.Request) {
 		user.UUID = existingUser.UUID
 	}
 
-	// Store updated user (this would trigger sync in real implementation)
 	mockUsers[inboundTag][user.SubID] = user
-
-	// TODO: Trigger sync engine to apply changes
-	// h.syncEngine.TriggerSync()
 
 	writeSuccess(w, user)
 }
@@ -378,11 +372,7 @@ func (h *UserHandler) DeleteUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Delete user (this would trigger sync in real implementation)
 	delete(users, subID)
-
-	// TODO: Trigger sync engine to apply changes
-	// h.syncEngine.TriggerSync()
 
 	w.WriteHeader(http.StatusNoContent)
 }

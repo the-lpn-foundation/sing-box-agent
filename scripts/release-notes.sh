@@ -2,10 +2,9 @@
 set -euo pipefail
 
 tag_name="${1:-}"
-checksums_file="${2:-dist/checksums.txt}"
 
 if [[ -z "${tag_name}" ]]; then
-  echo "usage: $0 <tag> [checksums-file]" >&2
+  echo "usage: $0 <tag>" >&2
   exit 1
 fi
 
@@ -28,11 +27,14 @@ else
   echo "- No commit entries found for this release range."
 fi
 echo
-echo "### Checksums"
-if [[ -f "${checksums_file}" ]]; then
-  echo '```text'
-  cat "${checksums_file}"
-  echo '```'
-else
-  echo "- Checksums file not found at ${checksums_file}."
-fi
+echo "### How to install"
+echo
+echo "This project is source-only — sing-box is GPLv3, so we do not ship"
+echo "pre-built binaries under the MIT license. Build from the attached"
+echo "source tarball:"
+echo
+echo '```bash'
+echo "curl -L https://github.com/oglenyaboss/sing-box-agent/archive/refs/tags/${tag_name}.tar.gz | tar xz"
+echo "cd sing-box-agent-${tag_name#v}"
+echo "make build"
+echo '```'

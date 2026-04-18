@@ -16,17 +16,17 @@ A lightweight Go service that embeds sing-box as a library and provides a REST A
 
 - **Runtime user management** without process restarts
 - **Full protocol support** via sing-box (VLESS, Hysteria2, ShadowTLS, TUIC, etc.)
-- **Multi-server architecture** — one agent per VPN server, controlled centrally
-- **Integration** with existing central control plane (Fastify reference impl) and PostgreSQL infrastructure
+- **Multi-server architecture** — one agent per VPN server, optionally controlled by a central plane
+- **Integration-friendly** — pluggable control plane (any HTTP backend can act as source of truth)
 - **Prometheus metrics** export for Grafana dashboards
 - **Zero-dependency** deployment (single binary)
-- **State consistency** — API is source of truth, agent applies desired state
+- **State consistency** — when paired with a control plane, the plane is source of truth; agent applies desired state
 
 ### 1.3 Non-Goals
 
-- Web UI (existing bot + web handle this)
-- Database storage (delegated to central API)
-- User authentication (delegated to central API)
+- Web UI — out of scope; pairs with any dashboard that speaks the agent's REST API
+- Persistent storage of users/inbounds (the optional control plane, if used, owns this)
+- End-user authentication (delegated to whoever owns the control plane)
 - Multi-tenancy (one agent = one server)
 
 ---
@@ -38,7 +38,7 @@ A lightweight Go service that embeds sing-box as a library and provides a REST A
 **CRITICAL: API is the Source of Truth**
 
 ```
-PostgreSQL (central control plane (Fastify reference impl))         sing-box-agent
+Central control plane (optional)                   sing-box-agent
 ┌─────────────────────┐         ┌─────────────────────┐
 │ Source of Truth     │         │ Desired State Cache │
 │ - Users             │────────▶│ - Synced on startup │
@@ -83,7 +83,7 @@ PostgreSQL (central control plane (Fastify reference impl))         sing-box-age
 
 ### 3.1 Response Envelope
 
-All responses follow this format (aligned with central control plane (Fastify reference impl)):
+All responses follow this envelope:
 
 **Success:**
 
@@ -221,9 +221,14 @@ singbox_inbound_traffic_down_bytes_total{tag="vless-reality"} 2147483648
 
 ---
 
-## 6. Integration with central control plane (Fastify reference impl)
+## 6. Integration with a Central Control Plane (optional)
 
-### 6.1 PostgreSQL Schema Changes
+The agent is designed to work standalone (see the Quick Start in the README)
+or paired with any HTTP-speaking control plane. This section documents the
+contract so you can implement a plane in any language — the reference
+schema below is in Prisma but the fields map 1:1 to whatever ORM you prefer.
+
+### 6.1 Suggested Schema
 
 ```prisma
 model Server {

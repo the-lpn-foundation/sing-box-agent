@@ -17,11 +17,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/lenya/sing-box-agent/internal/auth"
-	"github.com/lenya/sing-box-agent/internal/handlers"
-	"github.com/lenya/sing-box-agent/internal/middleware"
-	"github.com/lenya/sing-box-agent/internal/models"
-	syncpkg "github.com/lenya/sing-box-agent/internal/sync"
+	"github.com/oglenyaboss/sing-box-agent/internal/auth"
+	"github.com/oglenyaboss/sing-box-agent/internal/handlers"
+	"github.com/oglenyaboss/sing-box-agent/internal/middleware"
+	"github.com/oglenyaboss/sing-box-agent/internal/models"
+	syncpkg "github.com/oglenyaboss/sing-box-agent/internal/sync"
 )
 
 type MockSingBoxConfigE2E struct {

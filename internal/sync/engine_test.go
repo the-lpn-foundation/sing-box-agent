@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/lenya/sing-box-agent/internal/models"
+	"github.com/oglenyaboss/sing-box-agent/internal/models"
 )
 
 type MockSingBoxClient struct {

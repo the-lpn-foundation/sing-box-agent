@@ -100,16 +100,6 @@ func TestHealthReadyzStatus(t *testing.T) {
 	assert.Equal(t, "running", status["status"])
 }
 
-// TestIntegrationExample demonstrates the integration test pattern for sing-box-agent.
-// Integration tests verify interactions between components (e.g., agent + sing-box).
-func TestIntegrationExample(t *testing.T) {
-	t.Parallel()
-
-	// This test has been replaced with real integration tests.
-	// See TestHealthEndpoint, TestReadyzEndpoint, TestStatusEndpoint, and TestHealthReadyzStatus.
-	// These tests cover the core health endpoints of the API server.
-}
-
 // setupTestServerWithHealth creates a test server with health endpoints.
 func setupTestServerWithHealth(t *testing.T) *httptest.Server {
 	t.Helper()

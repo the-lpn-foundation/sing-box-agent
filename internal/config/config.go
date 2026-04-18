@@ -52,12 +52,14 @@ type Config struct {
 	// Environment: SINGBOX_AGENT_TLS_KEY_PATH
 	TLSKeyPath string `yaml:"tls_key_path" env:"SINGBOX_AGENT_TLS_KEY_PATH"`
 
-	// FastifyBaseURL is the base URL of the central Fastify API.
-	// Optional: if not set, agent runs standalone without central API integration.
+	// FastifyBaseURL is the base URL of an optional central control plane.
+	// ("Fastify" is the name of the reference implementation — any HTTP
+	// service that implements the documented contract will work.)
+	// Leave empty to run standalone without any control plane.
 	// Environment: SINGBOX_AGENT_FASTIFY_URL
 	FastifyBaseURL string `yaml:"fastify_base_url" env:"SINGBOX_AGENT_FASTIFY_URL"`
 
-	// ServerID is the unique identifier for this server in the central API.
+	// ServerID identifies this agent to the control plane.
 	// Required when FastifyBaseURL is set.
 	// Environment: SINGBOX_AGENT_SERVER_ID
 	ServerID string `yaml:"server_id" env:"SINGBOX_AGENT_SERVER_ID"`

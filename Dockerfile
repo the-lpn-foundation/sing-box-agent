@@ -6,6 +6,22 @@
 #
 # The container runs sing-box and the agent side-by-side; the agent reloads
 # sing-box via SIGHUP (strategy=signal) so no systemd is required.
+#
+# LICENSING NOTE (IMPORTANT)
+# --------------------------
+# The sing-box-agent source in this repository is MIT licensed, but the
+# *compiled* agent binary produced by this Dockerfile links sing-box as a
+# Go library. sing-box is GPLv3. The resulting image (binary + bundled
+# sing-box executable) is therefore a GPLv3 derived work.
+#
+# This Dockerfile is provided so operators can build and run the image for
+# their own use ("mere use" is unrestricted under GPLv3). Do NOT publish
+# the resulting image to a public registry under the MIT license — if you
+# redistribute the image you must comply with GPLv3 (provide corresponding
+# source, etc.) or link only against a non-GPL core.
+#
+# For these reasons this project intentionally does NOT ship a pre-built
+# image on Docker Hub / ghcr.io.
 
 ARG GO_VERSION=1.24
 ARG SINGBOX_VERSION=1.12.0

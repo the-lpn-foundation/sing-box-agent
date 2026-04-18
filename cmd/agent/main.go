@@ -11,10 +11,10 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/lenya/sing-box-agent/internal/client"
-	"github.com/lenya/sing-box-agent/internal/config"
-	"github.com/lenya/sing-box-agent/internal/server"
-	"github.com/lenya/sing-box-agent/internal/singbox"
+	"github.com/oglenyaboss/sing-box-agent/internal/client"
+	"github.com/oglenyaboss/sing-box-agent/internal/config"
+	"github.com/oglenyaboss/sing-box-agent/internal/server"
+	"github.com/oglenyaboss/sing-box-agent/internal/singbox"
 )
 
 var (

@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security disclosure
+    url: https://github.com/oglenyaboss/sing-box-agent/security/policy
+    about: "Do not file security issues in public. See SECURITY.md for the private disclosure channel."
+  - name: Question / usage help
+    url: https://github.com/oglenyaboss/sing-box-agent/discussions
+    about: "For usage questions, please open a Discussion instead of an Issue."

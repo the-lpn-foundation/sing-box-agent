@@ -1,4 +1,4 @@
-module github.com/lenya/sing-box-agent
+module github.com/oglenyaboss/sing-box-agent
 
 go 1.24.13
 

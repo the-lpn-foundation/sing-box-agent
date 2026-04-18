@@ -1,24 +1,39 @@
 # sing-box-agent
 
 A lightweight Go service that exposes a signed REST API for managing a
-[sing-box](https://github.com/SagerNet/sing-box) instance at runtime. It
-replaces panel-based management (S-UI, 3X-UI, etc.) with a declarative,
-programmable control surface that scales across many servers.
+[sing-box](https://github.com/SagerNet/sing-box) instance at runtime. Drop
+it onto any Linux box and manage users, inbounds, and subscriptions with
+`curl` — no panel, no SSH, no database.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 ![Go version](https://img.shields.io/github/go-mod/go-version/oglenyaboss/sing-box-agent?filename=go.mod)
 
+> Русскоязычная версия README: [README.ru.md](./README.ru.md)
+
 ---
+
+## Why
+
+Existing sing-box panels (3X-UI, S-UI, X-UI, and friends) are great for
+a single box but awkward once you run more than one server: web UIs are
+clicky, SSH-driven config editing doesn't scale, and there's no clean
+story for automation.
+
+`sing-box-agent` is the opposite shape: no UI, no opinions about storage,
+just a small authenticated HTTP API in front of a local sing-box. Run it
+standalone on one server, or stack many agents behind your own control
+plane — the contract is the same.
 
 ## What it does
 
-- **Remote management of inbounds and users** — CRUD over HTTP, no SSH.
-- **Desired-state sync** — push a complete config from a central control
-  plane; the agent reconciles the local sing-box safely and atomically.
+- **Users and inbounds over HTTP** — create, update, delete without SSH.
+- **Hot config reload** — apply changes without restarting sing-box.
 - **Subscription links** — generate `v2ray`, `clash`, or `sing-box`
-  subscription URLs for clients.
-- **Observability** — Prometheus metrics, structured JSON logs, health
-  and readiness probes.
+  subscriptions for clients.
+- **Desired-state sync** (optional) — push a full config from a central
+  plane; the agent reconciles atomically with rollback on failure.
+- **Observability** — Prometheus metrics (`/metrics`), structured JSON
+  logs, `/healthz` and `/readyz` probes.
 - **Security built in** — bearer-token auth plus HMAC-SHA256 request
   signing with replay protection (timestamp skew + nonce cache).
 - **Multi-protocol** — VLESS, VMess, Trojan, Shadowsocks, Hysteria2,
@@ -27,62 +42,88 @@ programmable control surface that scales across many servers.
 ## Architecture
 
 ```
-    central control plane (optional)
-    ──────────┬──────────
-              │ HTTPS + HMAC
-              ▼
-      ┌────────────────┐        ┌──────────────────┐
-      │  sing-box-     │──────▶│  sing-box core   │
-      │  agent :8080   │ reload│  (process on the │
-      │                │        │   same host)     │
-      └───────┬────────┘        └──────────────────┘
-              │
-              ▼ Prometheus / health
+          ┌────────────────┐        ┌──────────────────┐
+ curl ───▶│  sing-box-     │──────▶│  sing-box core   │
+          │  agent :8080   │ reload│  (process on the │
+          │                │        │   same host)     │
+          └───────┬────────┘        └──────────────────┘
+                  │
+                  ▼ /metrics /healthz
+
+(Optional: swap `curl` for your own control plane.)
 ```
 
-One agent runs per VPN host. The agent never holds long-lived state — the
-control plane is the source of truth; local persistence is limited to
-traffic counters and idempotency caches.
+One agent runs per VPN host. Local persistence is limited to traffic
+counters and the idempotency cache — everything else is either live
+sing-box state or driven from outside.
 
 ## Requirements
 
-- Go ≥ 1.24 (for building from source).
 - sing-box ≥ 1.12 installed on the host.
-- A Linux host with `systemd` **or** a container runtime (Docker,
-  Kubernetes, etc.).
+- Linux with `systemd` (default reload strategy) **or** any host where
+  you can signal a PID / run a reload command.
+- Go ≥ 1.24 if building from source. See note on binary distribution in
+  [License](#license).
 
-## Quick start
+## Quick start — standalone
 
-### Docker
+This is the simplest possible setup: one agent, one sing-box, no control
+plane. You manage users and inbounds with `curl`.
 
 ```bash
-# Build the image
-docker build -t sing-box-agent:local .
+# 1. Build the agent (sing-box is linked in as a Go library; a sing-box
+#    runtime binary must still be installed separately on the host).
+git clone https://github.com/oglenyaboss/sing-box-agent
+cd sing-box-agent
+make build
 
-# Copy the example config and generate real secrets
+# 2. Generate real secrets for the sample config.
 cp deploy/example/agent-config.yaml ./agent-config.yaml
 sed -i "s/CHANGE-ME-MIN-32-CHARACTERS-LONG-TOKEN/$(openssl rand -hex 32)/" agent-config.yaml
 sed -i "s/CHANGE-ME-HMAC-SECRET-KEY/$(openssl rand -hex 32)/" agent-config.yaml
 
-# Run (mounts your config; reload strategy = signal to avoid systemd)
+# 3. Run it (adjust paths as needed).
+./sing-box-agent -config ./agent-config.yaml &
+
+# 4. Smoke test.
+curl http://localhost:8080/healthz       # -> {"status":"healthy"}
+```
+
+From here, `curl` + the HMAC headers described in
+[`docs/integration-guide.md`](./docs/integration-guide.md) is enough to
+drive every CRUD endpoint.
+
+## Quick start — Docker
+
+For trying it end-to-end on a workstation, or for running in an
+environment without systemd.
+
+```bash
+docker build -t sing-box-agent:local .
+
+cp deploy/example/agent-config.yaml ./agent-config.yaml
+sed -i "s/CHANGE-ME-MIN-32-CHARACTERS-LONG-TOKEN/$(openssl rand -hex 32)/" agent-config.yaml
+sed -i "s/CHANGE-ME-HMAC-SECRET-KEY/$(openssl rand -hex 32)/" agent-config.yaml
+
 docker run --rm -p 8080:8080 -p 9090:9090 \
   -v "$PWD/agent-config.yaml:/etc/sing-box-agent/config.yaml:ro" \
   -v "$PWD/deploy/example/sing-box-config.json:/etc/sing-box/config.json:ro" \
   sing-box-agent:local
-
-# Smoke test
-curl http://localhost:8080/healthz     # -> {"status":"healthy"}
 ```
 
 See [`deploy/docker/docker-compose.yml`](./deploy/docker/docker-compose.yml)
 for a reproducible local stack.
 
-### Systemd
+**Note:** the image produced by the Dockerfile embeds sing-box, which is
+GPLv3. Building and running it for your own use is fine; publishing it
+to a public registry would require GPL-compliant redistribution. See the
+header of [`Dockerfile`](./Dockerfile) for details.
+
+## Quick start — systemd
 
 ```bash
 cd deploy/example
-# Build a native binary first (or drop one here) -- see below
-cp ../../sing-box-agent .
+cp ../../sing-box-agent .   # or your locally built binary
 sudo ./deploy.sh
 ```
 
@@ -90,18 +131,21 @@ The script installs the agent binary, writes a unit file, copies the
 example configs to `/etc/sing-box-agent/` and `/etc/sing-box/`, and
 starts the `sing-box-agent.service`.
 
-### Build from source
+## Adding a central control plane (optional)
 
-```bash
-make build                               # native binary
-make release                             # linux+darwin × amd64+arm64 artefacts
-```
+When you run more than a handful of servers, hand-rolled `curl` scripts
+stop being fun. Point the agent at a control plane of your own — any
+HTTP service that implements the contract in
+[`docs/integration-guide.md`](./docs/integration-guide.md) will do. Set
+`fastify_base_url` and `server_id` in the agent config and the agent
+will:
 
-Or with plain Go:
+- pull desired state from the plane at startup;
+- push traffic counters and user-online stats on an interval;
+- re-reconcile on drift.
 
-```bash
-go build -trimpath -ldflags "-s -w" -o sing-box-agent ./cmd/agent
-```
+The name `fastify_base_url` is historical — it's the name of the first
+reference plane; you don't have to use Node or Fastify to implement one.
 
 ## Configuration
 
@@ -121,12 +165,14 @@ by an environment variable.
 | `reload.target`       | `SINGBOX_AGENT_RELOAD_TARGET`       | `sing-box`                     | no       | service name, PID file, or executable      |
 | `tls_cert_path`       | `SINGBOX_AGENT_TLS_CERT_PATH`       | —                              | no       | enables TLS when paired with key           |
 | `tls_key_path`        | `SINGBOX_AGENT_TLS_KEY_PATH`        | —                              | no       | enables TLS when paired with cert          |
-| `fastify_base_url`    | `SINGBOX_AGENT_FASTIFY_URL`         | —                              | no       | optional upstream control-plane URL        |
+| `fastify_base_url`    | `SINGBOX_AGENT_FASTIFY_URL`         | —                              | no       | optional central control-plane URL         |
 | `server_id`           | `SINGBOX_AGENT_SERVER_ID`           | —                              | if above | identifies this agent to the control plane |
 
+> On macOS / BSD use `reload.strategy: signal` or `command` — `systemctl`
+> only exists on systemd Linux.
+
 See the annotated [`deploy/example/agent-config.yaml`](./deploy/example/agent-config.yaml)
-for a full reference and [`docs/integration-guide.md`](./docs/integration-guide.md)
-for the integration protocol.
+for a full reference.
 
 ## API overview
 
@@ -163,13 +209,11 @@ Full schema: [`docs/openapi.yaml`](./docs/openapi.yaml).
 
 ## Documentation
 
-- [`docs/integration-guide.md`](./docs/integration-guide.md) — integration
-  protocol for a central control plane.
+- [`docs/integration-guide.md`](./docs/integration-guide.md) — API
+  contract, signing scheme, and the optional control-plane protocol.
 - [`docs/deployment.md`](./docs/deployment.md) — systemd and Docker
   deployment patterns.
-- [`docs/spec.md`](./docs/spec.md) — detailed specification
-  (authoritative source of truth).
-- [`AGENTS.md`](./AGENTS.md) — governance, safety, and operational policies.
+- [`docs/spec.md`](./docs/spec.md) — detailed specification.
 
 ## Development
 
@@ -184,3 +228,11 @@ operator-hardening recommendations.
 ## License
 
 Released under the [MIT License](./LICENSE).
+
+**A note on binary distribution:** sing-box itself is GPLv3. This agent
+imports sing-box as a Go library, so any *compiled* binary is a GPLv3
+derived work. We therefore intentionally do **not** publish pre-built
+binaries or Docker images from this repository — building from source
+for your own use ("mere use") is unrestricted under GPLv3, but
+redistribution of compiled artifacts is your responsibility under the
+GPL. The MIT license applies to the source only.

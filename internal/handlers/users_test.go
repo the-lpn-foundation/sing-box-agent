@@ -9,7 +9,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/lenya/sing-box-agent/internal/models"
+	"github.com/oglenyaboss/sing-box-agent/internal/models"
 )
 
 // TestUserRequestValidate tests the UserRequest.Validate method.

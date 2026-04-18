@@ -78,7 +78,7 @@ green CI run.
 - **Formatting:** [`gofumpt`](https://github.com/mvdan/gofumpt) (stricter
   `gofmt`). The pre-commit hook blocks unformatted files.
 - **Imports:** grouped `std → third-party → internal` (`goimports` with
-  local prefix `github.com/lenya/sing-box-agent`).
+  local prefix `github.com/oglenyaboss/sing-box-agent`).
 - **Linters:** `golangci-lint` (config in [`.golangci.yml`](./.golangci.yml)).
 - **Error handling:** always handle or deliberately ignore errors; do not
   swallow them silently. Panics are forbidden in request handlers.
