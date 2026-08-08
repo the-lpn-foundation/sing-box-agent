@@ -13,6 +13,7 @@ import (
 
 	"github.com/oglenyaboss/sing-box-agent/internal/client"
 	"github.com/oglenyaboss/sing-box-agent/internal/config"
+	"github.com/oglenyaboss/sing-box-agent/internal/metrics"
 	"github.com/oglenyaboss/sing-box-agent/internal/server"
 	"github.com/oglenyaboss/sing-box-agent/internal/singbox"
 )
@@ -74,6 +75,15 @@ func main() {
 	srv := server.New(cfg, logger, wrapper, serverOpts)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+
+	// Start inbound traffic metrics collection (best-effort; disabled if the
+	// sing-box v2ray_api is unreachable).
+	go func() {
+		configClient := singbox.NewConfigClient(cfg.SingBoxConfigPath, wrapper)
+		if err := metrics.RunStatsLoop(ctx, logger, cfg.StatsAPIAddress, configClient); err != nil {
+			logger.Warn("stats loop failed", slog.Any("error", err))
+		}
+	}()
 
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)

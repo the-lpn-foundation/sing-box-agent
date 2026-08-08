@@ -8,16 +8,22 @@ import (
 )
 
 // StatsProviderAdapter bridges sing-box data to the handlers.StatsProvider interface.
-// Since sing-box doesn't expose per-user traffic stats via its Go API,
-// this adapter reads from the config to enumerate inbounds and returns
-// placeholder stats. Real traffic stats require sing-box experimental API integration.
+// When a V2RayStatsClient is attached, traffic stats are real counters from the
+// sing-box experimental v2ray_api; otherwise placeholder zero stats are returned.
 type StatsProviderAdapter struct {
 	configClient *ConfigClient
+	statsClient  *V2RayStatsClient
 }
 
 // NewStatsProviderAdapter creates a new StatsProviderAdapter.
 func NewStatsProviderAdapter(configClient *ConfigClient) *StatsProviderAdapter {
 	return &StatsProviderAdapter{configClient: configClient}
+}
+
+// WithStatsClient attaches a v2ray_api client so GetTrafficStats returns real counters.
+func (a *StatsProviderAdapter) WithStatsClient(client *V2RayStatsClient) *StatsProviderAdapter {
+	a.statsClient = client
+	return a
 }
 
 // GetTrafficStats returns traffic statistics per inbound.
@@ -32,12 +38,24 @@ func (a *StatsProviderAdapter) GetTrafficStats(ctx context.Context, inbound stri
 		if inbound != "" && ib.Tag != inbound {
 			continue
 		}
-		stats = append(stats, models.TrafficInboundStat{
+
+		stat := models.TrafficInboundStat{
 			Tag:       ib.Tag,
 			Type:      ib.Type,
 			UpBytes:   0,
 			DownBytes: 0,
-		})
+		}
+
+		if a.statsClient != nil {
+			up, down, err := a.statsClient.InboundTraffic(ctx, ib.Tag)
+			if err != nil {
+				return nil, err
+			}
+			stat.UpBytes = up
+			stat.DownBytes = down
+		}
+
+		stats = append(stats, stat)
 	}
 
 	return stats, nil

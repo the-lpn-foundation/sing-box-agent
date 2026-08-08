@@ -79,6 +79,13 @@ type Config struct {
 	// ReloadCommand is the shell command executed when ReloadStrategy == "command".
 	// Environment: SINGBOX_AGENT_RELOAD_COMMAND
 	ReloadCommand string `yaml:"reload_command" env:"SINGBOX_AGENT_RELOAD_COMMAND"`
+
+	// StatsAPIAddress is the listen address of the sing-box v2ray_api stats
+	// service (experimental.v2ray_api). The agent queries it for per-inbound
+	// traffic counters. Empty disables traffic metrics.
+	// Default: 127.0.0.1:9091
+	// Environment: SINGBOX_AGENT_STATS_API_ADDRESS
+	StatsAPIAddress string `yaml:"stats_api_address" env:"SINGBOX_AGENT_STATS_API_ADDRESS"`
 }
 
 // String returns a redacted string representation of the Config.

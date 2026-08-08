@@ -1,0 +1,72 @@
+package singbox
+
+import (
+	"context"
+	"fmt"
+
+	"github.com/sagernet/sing-box/experimental/v2rayapi"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
+)
+
+// statsServiceFullMethod is the QueryStats method path of the sing-box
+// v2ray_api service. Note: the package-level init() in
+// experimental/v2rayapi rewrites StatsService_ServiceDesc.ServiceName to
+// "v2ray.core.app.stats.command.StatsService" while the generated client
+// constants still point at "experimental.v2rayapi.StatsService", so the
+// generated client cannot reach the real server. Dial the canonical path.
+const statsServiceFullMethod = "/v2ray.core.app.stats.command.StatsService/QueryStats"
+
+// V2RayStatsClient queries per-inbound traffic counters from the sing-box
+// experimental v2ray_api stats service (grpc StatsService).
+type V2RayStatsClient struct {
+	conn *grpc.ClientConn
+}
+
+// NewV2RayStatsClient dials the sing-box v2ray_api listener.
+func NewV2RayStatsClient(address string) (*V2RayStatsClient, error) {
+	conn, err := grpc.NewClient(address, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		return nil, fmt.Errorf("dial v2ray stats api %s: %w", address, err)
+	}
+	return &V2RayStatsClient{conn: conn}, nil
+}
+
+// Close closes the underlying grpc connection.
+func (c *V2RayStatsClient) Close() error {
+	return c.conn.Close()
+}
+
+// queryStats performs a single QueryStats RPC and returns the first stat value.
+func (c *V2RayStatsClient) queryStats(ctx context.Context, pattern string) (int64, error) {
+	req := &v2rayapi.QueryStatsRequest{Patterns: []string{pattern}}
+	resp := &v2rayapi.QueryStatsResponse{}
+	if err := c.conn.Invoke(ctx, statsServiceFullMethod, req, resp, grpc.StaticMethod()); err != nil {
+		return 0, err
+	}
+	if stats := resp.GetStat(); len(stats) > 0 {
+		return stats[0].GetValue(), nil
+	}
+	return 0, nil
+}
+
+// InboundTraffic returns cumulative uplink and downlink bytes for an inbound tag.
+func (c *V2RayStatsClient) InboundTraffic(ctx context.Context, tag string) (up, down uint64, err error) {
+	upVal, err := c.queryStats(ctx, "inbound>>>"+tag+">>>traffic>>>uplink")
+	if err != nil {
+		return 0, 0, fmt.Errorf("query uplink for %s: %w", tag, err)
+	}
+
+	downVal, err := c.queryStats(ctx, "inbound>>>"+tag+">>>traffic>>>downlink")
+	if err != nil {
+		return 0, 0, fmt.Errorf("query downlink for %s: %w", tag, err)
+	}
+
+	if upVal > 0 {
+		up = uint64(upVal)
+	}
+	if downVal > 0 {
+		down = uint64(downVal)
+	}
+	return up, down, nil
+}

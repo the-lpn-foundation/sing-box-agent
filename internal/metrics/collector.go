@@ -50,7 +50,7 @@ func NewCollector(registerer prometheus.Registerer) (*Collector, error) {
 	syncStatus, err := registerGaugeVec(registerer, prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: "singbox_agent_sync_status",
-			Help: "Current sync status (label state)",
+			Help: "Current sync status (0=synced, 1=syncing, 2=error)",
 		},
 		[]string{"state"},
 	))
@@ -61,7 +61,7 @@ func NewCollector(registerer prometheus.Registerer) (*Collector, error) {
 	syncTimestamp, err := registerGauge(registerer, prometheus.NewGauge(
 		prometheus.GaugeOpts{
 			Name: "singbox_agent_sync_timestamp_seconds",
-			Help: "Unix timestamp of last successful sync",
+			Help: "Unix timestamp of the last successful sync",
 		},
 	))
 	if err != nil {

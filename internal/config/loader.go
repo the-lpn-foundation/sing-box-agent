@@ -20,6 +20,7 @@ func Defaults() *Config {
 		LogLevel:          "info",
 		ReloadStrategy:    "systemctl",
 		ReloadTarget:      "sing-box",
+		StatsAPIAddress:   "127.0.0.1:9091",
 	}
 }
 
