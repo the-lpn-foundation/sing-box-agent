@@ -85,6 +85,10 @@ func New(cfg *config.Config, logger *slog.Logger, wrapper *singbox.Wrapper, opts
 			slog.String("error", err.Error()))
 		reloader = syncpkg.NewSystemctlReloader("sing-box")
 	}
+	// Inject the reloader into ConfigClient so that REST CRUD paths
+	// (POST/PUT/DELETE /inbounds/{tag}/users) respect reload_strategy
+	// and benefit from debounced reloads — same as /sync/desired-state.
+	configClient = configClient.WithReloader(reloader)
 	configManager := syncpkg.NewConfigManagerWithReloader(cfg.SingBoxConfigPath, wrapper, reloader)
 	syncEngine := syncpkg.NewEngineWithConfigManager(configClient, configManager)
 
