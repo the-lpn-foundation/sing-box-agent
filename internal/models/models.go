@@ -109,6 +109,14 @@ type TrafficInboundStat struct {
 	DownBytes uint64 `json:"down_bytes"`
 }
 
+// TrafficUserStat represents cumulative traffic for a single user (keyed by subId).
+type TrafficUserStat struct {
+	SubID     string `json:"subId"`
+	Inbound   string `json:"inbound,omitempty"`
+	UpBytes   uint64 `json:"up"`
+	DownBytes uint64 `json:"down"`
+}
+
 // OnlineUser represents a currently connected user.
 type OnlineUser struct {
 	SubID       string    `json:"subId"`

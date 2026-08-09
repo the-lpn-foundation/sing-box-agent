@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -419,6 +420,43 @@ func getInboundUsers(inbound map[string]interface{}) []interface{} {
 	return []interface{}{}
 }
 
+// syncStatsUsers updates experimental.v2ray_api.stats.users with the current
+// set of inbound user names (name == subId) so sing-box tracks per-user
+// traffic counters. It is a no-op when the v2ray_api stats section is absent.
+func syncStatsUsers(root map[string]interface{}) {
+	experimental, ok := root["experimental"].(map[string]interface{})
+	if !ok {
+		return
+	}
+	v2rayAPI, ok := experimental["v2ray_api"].(map[string]interface{})
+	if !ok {
+		return
+	}
+	stats, ok := v2rayAPI["stats"].(map[string]interface{})
+	if !ok {
+		return
+	}
+
+	seen := make(map[string]bool)
+	names := make([]string, 0)
+	for _, inbound := range getInbounds(root) {
+		for _, rawUser := range getInboundUsers(inbound) {
+			userMap, ok := rawUser.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			name := getString(userMap, "name")
+			if name == "" || seen[name] {
+				continue
+			}
+			seen[name] = true
+			names = append(names, name)
+		}
+	}
+	sort.Strings(names)
+	stats["users"] = names
+}
+
 func setInboundUsers(inbound map[string]interface{}, users []interface{}) {
 	if _, ok := inbound["users"]; ok {
 		inbound["users"] = users
@@ -590,6 +628,10 @@ func (c *ConfigClient) saveAndReload(_ context.Context, root map[string]interfac
 	}
 
 	_ = os.WriteFile(c.configPath+".agent.bak", previousConfig, 0o600)
+
+	// Keep experimental.v2ray_api.stats.users in sync with actual inbound
+	// users so sing-box tracks per-user traffic counters (by name = subId).
+	syncStatsUsers(root)
 
 	configJSON, err := json.MarshalIndent(root, "", "  ")
 	if err != nil {

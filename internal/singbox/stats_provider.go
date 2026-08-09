@@ -61,6 +61,52 @@ func (a *StatsProviderAdapter) GetTrafficStats(ctx context.Context, inbound stri
 	return stats, nil
 }
 
+// GetUserTrafficStats returns cumulative traffic per user (keyed by subId).
+// User names in the sing-box config equal the subId (see buildProtocolUser),
+// and sing-box v2ray_api tracks per-user counters only for names listed in
+// experimental.v2ray_api.stats.users (kept in sync by ConfigClient).
+func (a *StatsProviderAdapter) GetUserTrafficStats(ctx context.Context) ([]models.TrafficUserStat, error) {
+	users, err := a.configClient.GetUsers(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if a.statsClient == nil {
+		return []models.TrafficUserStat{}, nil
+	}
+
+	names := make([]string, 0, len(users))
+	for _, u := range users {
+		if u.SubID != "" {
+			names = append(names, u.SubID)
+		}
+	}
+
+	counters, err := a.statsClient.UserTrafficBatch(ctx, names)
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]models.TrafficUserStat, 0, len(users))
+	for _, u := range users {
+		if u.SubID == "" {
+			continue
+		}
+		entry, ok := counters[u.SubID]
+		if !ok {
+			// No counter yet — sing-box creates per-user counters lazily on
+			// first connection; report zeroes so consumers can compute deltas.
+			entry = [2]uint64{0, 0}
+		}
+		result = append(result, models.TrafficUserStat{
+			SubID:     u.SubID,
+			Inbound:   u.InboundTag,
+			UpBytes:   entry[0],
+			DownBytes: entry[1],
+		})
+	}
+	return result, nil
+}
+
 // GetOnlineUsers returns currently connected users.
 // Since sing-box doesn't expose connection tracking via Go API,
 // this returns an empty list. Real implementation requires

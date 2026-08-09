@@ -19,13 +19,22 @@ import (
 
 type mockStatsProvider struct {
 	trafficStats []models.TrafficInboundStat
+	userStats    []models.TrafficUserStat
 	onlineUsers  []models.OnlineUser
 	trafficErr   error
+	userErr      error
 	onlineErr    error
 
 	lastInbound string
 	lastStart   *time.Time
 	lastEnd     *time.Time
+}
+
+func (m *mockStatsProvider) GetUserTrafficStats(_ context.Context) ([]models.TrafficUserStat, error) {
+	if m.userErr != nil {
+		return nil, m.userErr
+	}
+	return m.userStats, nil
 }
 
 func (m *mockStatsProvider) GetTrafficStats(_ context.Context, inbound string, start, end *time.Time) ([]models.TrafficInboundStat, error) {
@@ -119,6 +128,7 @@ func TestGetTrafficStats_Success(t *testing.T) {
 func TestGetTrafficStats_NoTimeRange(t *testing.T) {
 	provider := &mockStatsProvider{
 		trafficStats: []models.TrafficInboundStat{{Tag: "all", UpBytes: 100, DownBytes: 200}},
+		userStats:    []models.TrafficUserStat{{SubID: "sub-1", UpBytes: 10, DownBytes: 20}},
 	}
 	h := newStatsHandlerForTest(provider)
 
@@ -142,6 +152,42 @@ func TestGetTrafficStats_NoTimeRange(t *testing.T) {
 	assert.NotContains(t, data, "end")
 	assert.Nil(t, provider.lastStart)
 	assert.Nil(t, provider.lastEnd)
+
+	users, ok := data["users"].([]interface{})
+	require.True(t, ok)
+	require.Len(t, users, 1)
+	u, ok := users[0].(map[string]interface{})
+	require.True(t, ok)
+	assert.Equal(t, "sub-1", u["subId"])
+	assert.Equal(t, float64(10), u["up"])
+	assert.Equal(t, float64(20), u["down"])
+}
+
+func TestGetTrafficStats_WithTimeRangeOmitsUsers(t *testing.T) {
+	start := time.Date(2026, 2, 20, 10, 0, 0, 0, time.UTC)
+	end := start.Add(2 * time.Hour)
+	provider := &mockStatsProvider{
+		trafficStats: []models.TrafficInboundStat{{Tag: "all", UpBytes: 100, DownBytes: 200}},
+		userStats:    []models.TrafficUserStat{{SubID: "sub-1", UpBytes: 10, DownBytes: 20}},
+	}
+	h := newStatsHandlerForTest(provider)
+
+	req := httptest.NewRequest(http.MethodGet, "/stats/traffic?start="+start.Format(time.RFC3339)+"&end="+end.Format(time.RFC3339), nil)
+	w := httptest.NewRecorder()
+
+	h.GetTrafficStats(w, req)
+
+	resp := w.Result()
+	defer func() { _ = resp.Body.Close() }()
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+	var envelope Response
+	err := json.NewDecoder(resp.Body).Decode(&envelope)
+	require.NoError(t, err)
+
+	data, ok := envelope.Data.(map[string]interface{})
+	require.True(t, ok)
+	assert.NotContains(t, data, "users")
 }
 
 func TestGetTrafficStats_InvalidTimeRange(t *testing.T) {

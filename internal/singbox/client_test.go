@@ -2036,3 +2036,52 @@ func TestBuildProtocolUser_EdgeCases(t *testing.T) {
 		assert.Equal(t, "flow1", result["flow"])
 	})
 }
+
+func TestSyncStatsUsers(t *testing.T) {
+	root := map[string]interface{}{
+		"inbounds": []interface{}{
+			map[string]interface{}{
+				"tag":  "vless-in",
+				"type": "vless",
+				"users": []interface{}{
+					map[string]interface{}{"name": "sub-b", "uuid": "11111111-1111-1111-1111-111111111111"},
+					map[string]interface{}{"name": "sub-a", "uuid": "22222222-2222-2222-2222-222222222222"},
+				},
+			},
+			map[string]interface{}{
+				"tag":  "hy2-in",
+				"type": "hysteria2",
+				"users": []interface{}{
+					map[string]interface{}{"name": "sub-b", "password": "p1"},
+				},
+			},
+		},
+		"experimental": map[string]interface{}{
+			"v2ray_api": map[string]interface{}{
+				"listen": "127.0.0.1:9091",
+				"stats": map[string]interface{}{
+					"enabled":  true,
+					"inbounds": []interface{}{"vless-in", "hy2-in"},
+				},
+			},
+		},
+	}
+
+	syncStatsUsers(root)
+
+	experimental, ok := root["experimental"].(map[string]interface{})
+	require.True(t, ok)
+	stats, ok := experimental["v2ray_api"].(map[string]interface{})["stats"].(map[string]interface{})
+	require.True(t, ok)
+	users, ok := stats["users"].([]string)
+	require.True(t, ok)
+	require.Len(t, users, 2)
+	assert.Equal(t, "sub-a", users[0])
+	assert.Equal(t, "sub-b", users[1]) // deduped across inbounds
+
+	// No experimental section — no panic, nothing written.
+	root2 := map[string]interface{}{"inbounds": []interface{}{}}
+	syncStatsUsers(root2)
+	_, ok = root2["experimental"]
+	assert.False(t, ok)
+}

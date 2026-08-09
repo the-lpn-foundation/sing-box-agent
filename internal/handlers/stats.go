@@ -18,6 +18,7 @@ const (
 // StatsProvider is the interface for retrieving traffic and online user stats.
 type StatsProvider interface {
 	GetTrafficStats(ctx context.Context, inbound string, start, end *time.Time) ([]models.TrafficInboundStat, error)
+	GetUserTrafficStats(ctx context.Context) ([]models.TrafficUserStat, error)
 	GetOnlineUsers(ctx context.Context) ([]models.OnlineUser, error)
 }
 
@@ -51,6 +52,14 @@ func (h *StatsHandler) GetTrafficStats(w http.ResponseWriter, r *http.Request) {
 
 	data := map[string]interface{}{
 		"inbounds": stats,
+	}
+	// Per-user counters are cumulative since sing-box start — they are only
+	// meaningful without a time filter (consumers compute their own deltas).
+	if start == nil {
+		users, err := h.provider.GetUserTrafficStats(r.Context())
+		if err == nil {
+			data["users"] = users
+		}
 	}
 	if start != nil {
 		data["start"] = start.Format(time.RFC3339)
