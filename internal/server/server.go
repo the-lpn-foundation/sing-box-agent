@@ -52,6 +52,7 @@ type Server struct {
 type ServerOptions struct {
 	Version       string
 	FastifyClient *client.Client
+	StatsClient   *singbox.V2RayStatsClient
 }
 
 // New creates a new HTTP server with the given config and logger.
@@ -60,9 +61,11 @@ func New(cfg *config.Config, logger *slog.Logger, wrapper *singbox.Wrapper, opts
 
 	var version string
 	var fastifyClient *client.Client
+	var statsClient *singbox.V2RayStatsClient
 	if len(opts) > 0 {
 		version = opts[0].Version
 		fastifyClient = opts[0].FastifyClient
+		statsClient = opts[0].StatsClient
 	}
 	if version == "" {
 		version = "dev"
@@ -104,6 +107,9 @@ func New(cfg *config.Config, logger *slog.Logger, wrapper *singbox.Wrapper, opts
 	coreHandler := handlers.NewCoreHandler(coreService, logger)
 
 	statsProvider := singbox.NewStatsProviderAdapter(configClient)
+	if statsClient != nil {
+		statsProvider = statsProvider.WithStatsClient(statsClient)
+	}
 	statsHandler := handlers.NewStatsHandler(statsProvider, logger)
 
 	// Public endpoints (no auth)

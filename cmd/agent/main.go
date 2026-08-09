@@ -56,6 +56,19 @@ func main() {
 
 	serverOpts := server.ServerOptions{Version: Version}
 
+	// Attach a v2ray_api stats client to the /stats endpoints so they return
+	// real per-inbound and per-user counters (best-effort; disabled if the
+	// sing-box v2ray_api listener is unreachable).
+	if cfg.StatsAPIAddress != "" {
+		statsClient, err := singbox.NewV2RayStatsClient(cfg.StatsAPIAddress)
+		if err != nil {
+			logger.Warn("v2ray stats api unavailable, /stats endpoints report zeroes",
+				slog.String("error", err.Error()))
+		} else {
+			serverOpts.StatsClient = statsClient
+		}
+	}
+
 	// Create FastifyClient if central API is configured
 	if cfg.FastifyBaseURL != "" {
 		fastifyClient, err := client.NewFastifyClient(client.Options{
