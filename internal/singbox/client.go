@@ -34,6 +34,10 @@ type ConfigClient struct {
 	mu         sync.RWMutex
 	lastReload time.Time
 
+	// debounceInterval is the reload debounce window. Defaults to
+	// reloadDebounceInterval; overridable for tests via SetDebounceInterval.
+	debounceInterval time.Duration
+
 	// reloader, if set, replaces the hardcoded systemctl path so that
 	// reload_strategy (systemctl|signal|command) is respected on all code
 	// paths, not just /sync/desired-state.
@@ -47,7 +51,19 @@ type ConfigClient struct {
 }
 
 func NewConfigClient(configPath string, wrapper *Wrapper) *ConfigClient {
-	return &ConfigClient{configPath: configPath, wrapper: wrapper}
+	return &ConfigClient{
+		configPath:       configPath,
+		wrapper:          wrapper,
+		debounceInterval: reloadDebounceInterval,
+	}
+}
+
+// SetDebounceInterval overrides the reload debounce window. Tests use this to
+// shrink the default 3s window so debounce behaviour can be exercised quickly.
+// Returns the receiver for chaining.
+func (c *ConfigClient) SetDebounceInterval(d time.Duration) *ConfigClient {
+	c.debounceInterval = d
+	return c
 }
 
 // WithReloader injects a reloader (systemctl/signal/command) to use instead of
@@ -596,10 +612,10 @@ func (c *ConfigClient) saveAndReload(_ context.Context, root map[string]interfac
 	if c.debounceTimer == nil {
 		// First write in this window — capture the pre-window config for rollback.
 		c.debounceOriginal = previousConfig
-		c.debounceTimer = time.AfterFunc(reloadDebounceInterval, c.performDebouncedReload)
+		c.debounceTimer = time.AfterFunc(c.debounceInterval, c.performDebouncedReload)
 	} else {
 		// Subsequent write in the same window — reset the timer.
-		c.debounceTimer.Reset(reloadDebounceInterval)
+		c.debounceTimer.Reset(c.debounceInterval)
 	}
 	c.debounceMu.Unlock()
 
