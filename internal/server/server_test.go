@@ -1597,9 +1597,10 @@ func TestRouteRegistration(t *testing.T) {
 			srv.httpServer.Handler.ServeHTTP(w, req)
 			// Just verify the route exists (not 404 from mux, though handler may return 404 for missing data)
 			// Healthz, readyz, status should return 200
-			if tt.path == "/healthz" || tt.path == "/status" {
+			switch tt.path {
+			case "/healthz", "/status":
 				assert.Equal(t, http.StatusOK, w.Code)
-			} else if tt.path == "/readyz" {
+			case "/readyz":
 				assert.Equal(t, http.StatusServiceUnavailable, w.Code)
 			}
 		})

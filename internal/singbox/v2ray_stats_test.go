@@ -2,6 +2,7 @@ package singbox
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"testing"
 
@@ -58,11 +59,23 @@ func queryStatsHandler(srv interface{}, ctx context.Context, dec func(interface{
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(statsServiceServer).QueryStats(ctx, in)
+		ssrv, ok := srv.(statsServiceServer)
+		if !ok {
+			return nil, fmt.Errorf("unexpected mock server type %T", srv)
+		}
+		return ssrv.QueryStats(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{Server: srv, FullMethod: "/v2ray.core.app.stats.command.StatsService/QueryStats"}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(statsServiceServer).QueryStats(ctx, req.(*v2rayapi.QueryStatsRequest))
+		ssrv, ok := srv.(statsServiceServer)
+		if !ok {
+			return nil, fmt.Errorf("unexpected mock server type %T", srv)
+		}
+		qreq, ok := req.(*v2rayapi.QueryStatsRequest)
+		if !ok {
+			return nil, fmt.Errorf("unexpected request type %T", req)
+		}
+		return ssrv.QueryStats(ctx, qreq)
 	}
 	return interceptor(ctx, in, info, handler)
 }

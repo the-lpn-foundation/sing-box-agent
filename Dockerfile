@@ -23,7 +23,7 @@
 # For these reasons this project intentionally does NOT ship a pre-built
 # image on Docker Hub / ghcr.io.
 
-ARG GO_VERSION=1.24
+ARG GO_VERSION=1.25
 ARG SINGBOX_VERSION=1.12.0
 
 # ----------------------------------------------------------------------------

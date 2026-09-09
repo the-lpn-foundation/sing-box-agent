@@ -20,7 +20,7 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 	req := &v2rayapi.QueryStatsRequest{Patterns: []string{">>>"}}
 	resp := &v2rayapi.QueryStatsResponse{}
 	err = conn.Invoke(context.Background(), "/v2ray.core.app.stats.command.StatsService/QueryStats", req, resp, grpc.StaticMethod())

@@ -686,14 +686,14 @@ func writeFileAtomic(path string, data []byte) error {
 	}
 	tmpName := tmpFile.Name()
 	if err := tmpFile.Close(); err != nil {
-		os.Remove(tmpName)
+		_ = os.Remove(tmpName)
 		return fmt.Errorf("failed to close temp config file: %w", err)
 	}
 
 	written := false
 	defer func() {
 		if !written {
-			os.Remove(tmpName)
+			_ = os.Remove(tmpName)
 		}
 	}()
 
@@ -702,7 +702,7 @@ func writeFileAtomic(path string, data []byte) error {
 		return fmt.Errorf("failed to open temp config file: %w", err)
 	}
 	if _, err := f.Write(data); err != nil {
-		f.Close()
+		_ = f.Close()
 		return fmt.Errorf("failed to write config file: %w", err)
 	}
 	if err := f.Close(); err != nil {

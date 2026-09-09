@@ -1,6 +1,6 @@
 PHONY := help lint test build test-race test-coverage security release version tools-install
 .PHONY: $(PHONY)
-GOLANGCI_LINT_VERSION := v1.64.5
+GOLANGCI_LINT_VERSION := v2.13.2
 STATICCHECK_VERSION := 2025.1.1
 GOFUMPT_VERSION := v0.7.0
 

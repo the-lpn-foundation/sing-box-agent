@@ -1,53 +1,47 @@
-run:
-  timeout: 5m
-
+version: "2"
 linters:
-  enable:
-    - gofmt
-    - govet
-    - errcheck
-    - staticcheck
-    - ineffassign
-    - typecheck
-    - gosimple
-    - goimports
-
+  settings:
+    errcheck:
+      check-type-assertions: true
+      check-blank: false
+      exclude-functions:
+        - io.Writer.Write
+        - io.StringWriter.WriteString
+        - (*github.com/gin-gonic/gin.Context).String
+        - (*github.com/gin-gonic/gin.Context).JSON
+        - (*github.com/gin-gonic/gin.Context).Data
+        - io.Closer.Close
+        - (*testing.T).Fatal
+        - (*testing.T).Fatalf
+        - (*testing.T).Error
+        - (*testing.T).Errorf
+        - (*log/slog.Logger).LogAttrs
+        - (*log/slog.Logger).Debug
+        - (*log/slog.Logger).Info
+        - (*log/slog.Logger).Warn
+        - (*log/slog.Logger).Error
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
 issues:
-  exclude-use-default: false
   max-issues-per-linter: 0
   max-same-issues: 0
-
-linters-settings:
-  gofmt:
-    simplify: true
-
-  goimports:
-    local-prefixes: github.com/oglenyaboss/sing-box-agent
-
-  errcheck:
-    # Check for errors on type assertions
-    check-type-assertions: true
-    # Check for errors on blank assignments
-    check-blank: false
-    # Exclude common cases where error checking is not needed
-    exclude-functions:
-      # io.Writer methods - often ignored in tests/handlers
-      - io.Writer.Write
-      - io.StringWriter.WriteString
-      - (*github.com/gin-gonic/gin.Context).String
-      - (*github.com/gin-gonic/gin.Context).JSON
-      - (*github.com/gin-gonic/gin.Context).Data
-      # Closers in defer - error handling not critical
-      - io.Closer.Close
-      # Testing helpers
-      - (*testing.T).Fatal
-      - (*testing.T).Fatalf
-      - (*testing.T).Error
-      - (*testing.T).Errorf
-      # Log functions
-      - (*log/slog.Logger).LogAttrs
-      - (*log/slog.Logger).Debug
-      - (*log/slog.Logger).Info
-      - (*log/slog.Logger).Warn
-      - (*log/slog.Logger).Error
-# Curated set of linters enabled; tool versions are pinned in the Makefile.
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    gofmt:
+      simplify: true
+    goimports:
+      local-prefixes:
+        - github.com/the-lpn-foundation/sing-box-agent
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$

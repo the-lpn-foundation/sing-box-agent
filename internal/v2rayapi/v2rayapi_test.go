@@ -58,12 +58,15 @@ func TestMessageRoundTrip(t *testing.T) {
 	for _, msg := range msgs {
 		data := msg.Marshal()
 		typ := reflect.TypeOf(msg).Elem()
-		dst := reflect.New(typ).Interface().(interface{ Unmarshal(data []byte) error })
-		if err := dst.Unmarshal(data); err != nil {
+		u, ok := reflect.New(typ).Interface().(interface{ Unmarshal(data []byte) error })
+		if !ok {
+			t.Fatalf("%T: generated message does not implement Unmarshal", msg)
+		}
+		if err := u.Unmarshal(data); err != nil {
 			t.Fatalf("%T.Unmarshal(%x): %v", msg, data, err)
 		}
-		if !reflect.DeepEqual(msg, dst) {
-			t.Fatalf("%T round trip: got %+v, want %+v", msg, dst, msg)
+		if !reflect.DeepEqual(msg, u) {
+			t.Fatalf("%T round trip: got %+v, want %+v", msg, u, msg)
 		}
 	}
 }
