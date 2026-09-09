@@ -14,19 +14,28 @@ import (
 
 // CoreServiceAdapter bridges sing-box systemd service and config file to the handlers.CoreService interface.
 type CoreServiceAdapter struct {
-	wrapper     *Wrapper
 	configPath  string
 	serviceName string
 	pidFile     string
+
+	// reloader, if set, replaces the hardcoded systemctl path in Reload so that
+	// reload_strategy (systemctl|signal|command) is respected on /core/reload.
+	reloader Reloader
 }
 
 // NewCoreServiceAdapter creates a new CoreServiceAdapter.
-func NewCoreServiceAdapter(wrapper *Wrapper, configPath string) *CoreServiceAdapter {
+func NewCoreServiceAdapter(configPath string) *CoreServiceAdapter {
 	return &CoreServiceAdapter{
-		wrapper:     wrapper,
 		configPath:  configPath,
 		serviceName: "sing-box",
 	}
+}
+
+// WithReloader injects a reloader (systemctl/signal/command) to use instead of
+// the legacy hardcoded systemctl path. Returns the receiver for chaining.
+func (a *CoreServiceAdapter) WithReloader(r Reloader) *CoreServiceAdapter {
+	a.reloader = r
+	return a
 }
 
 // WithPIDFile configures a PID file used for health probing in non-systemd
@@ -37,8 +46,20 @@ func (a *CoreServiceAdapter) WithPIDFile(path string) *CoreServiceAdapter {
 	return a
 }
 
-// Reload reloads the sing-box configuration via systemctl.
+// Reload reloads the sing-box configuration. When a reloader is injected via
+// WithReloader, it is used (respecting reload_strategy); otherwise falls back
+// to the legacy systemctl path.
 func (a *CoreServiceAdapter) Reload(ctx context.Context) error {
+	if a.reloader != nil {
+		ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+		defer cancel()
+
+		if err := a.reloader.Reload(ctx); err != nil {
+			return fmt.Errorf("reload sing-box: %w", err)
+		}
+		return nil
+	}
+
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 

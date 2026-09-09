@@ -2,9 +2,6 @@ package config
 
 import (
 	"fmt"
-	"os"
-	"strconv"
-	"strings"
 )
 
 // Config holds the application configuration.
@@ -19,6 +16,18 @@ type Config struct {
 	// Default: 9090
 	// Environment: SINGBOX_AGENT_METRICS_PORT
 	MetricsPort int `yaml:"metrics_port" env:"SINGBOX_AGENT_METRICS_PORT"`
+
+	// MetricsUsername enables HTTP Basic auth on the /metrics endpoint.
+	// Optional; auth is active only when both MetricsUsername and
+	// MetricsPassword are non-empty.
+	// Environment: SINGBOX_AGENT_METRICS_USERNAME
+	MetricsUsername string `yaml:"metrics_username" env:"SINGBOX_AGENT_METRICS_USERNAME"`
+
+	// MetricsPassword is the HTTP Basic auth password for /metrics.
+	// Optional; auth is active only when both MetricsUsername and
+	// MetricsPassword are non-empty.
+	// Environment: SINGBOX_AGENT_METRICS_PASSWORD
+	MetricsPassword string `yaml:"metrics_password" env:"SINGBOX_AGENT_METRICS_PASSWORD"`
 
 	// Token is the authentication bearer token.
 	// Minimum: 32 characters
@@ -105,30 +114,4 @@ func (c *Config) String() string {
 		c.LogLevel,
 		tlsStatus,
 	)
-}
-
-// GetEnv retrieves the value of an environment variable.
-// It returns the provided default if the variable is not set.
-func GetEnv(key, defaultValue string) string {
-	if value := os.Getenv(key); value != "" {
-		return value
-	}
-	return defaultValue
-}
-
-// GetEnvInt retrieves the value of an environment variable as an integer.
-// It returns the provided default if the variable is not set or invalid.
-func GetEnvInt(key string, defaultValue int) int {
-	if value := os.Getenv(key); value != "" {
-		if intVal, err := strconv.Atoi(value); err == nil {
-			return intVal
-		}
-	}
-	return defaultValue
-}
-
-// GetEnvBool retrieves the value of an environment variable as a boolean.
-// It returns false if the variable is not set.
-func GetEnvBool(key string) bool {
-	return strings.ToLower(os.Getenv(key)) == "true"
 }

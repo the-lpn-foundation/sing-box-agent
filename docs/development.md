@@ -9,31 +9,29 @@ and [openapi.yaml](./openapi.yaml).
 
 ```
 cmd/agent/               Main binary (main.go wires config → server)
+cmd/statsprobe/         Debug utility: dumps v2ray_api traffic counters
 internal/
   auth/                  Bearer-token and HMAC-SHA256 signing primitives
   client/                HTTP client for an upstream control plane
   config/                YAML + env loader, validation
-  db/                    Optional local persistence (SQLite/Postgres)
   handlers/              HTTP handlers for each API group
   middleware/            Auth + idempotency middleware
   models/                Domain types (Inbound, User, DesiredState, …)
   server/                HTTP server bootstrap, lifecycle manager
-  singbox/               Wrapper around sing-box (Config, CoreServiceAdapter)
+  singbox/               Wrapper around the sing-box process (Config, CoreServiceAdapter)
   sync/                  Desired-state diff + reconciler + reload strategies
   store/                 Idempotency cache, request deduplication
-  validators/            JSON-schema validation helpers
   metrics/               Prometheus collectors
-  testutil/              Shared test helpers
 
 deploy/
   example/               Systemd deploy script + example configs
   docker/                Dockerfile support (entrypoint, compose)
 
 docs/                    Specs, integration guide, OpenAPI, dev docs
-migrations/              SQL migrations (local persistence)
 test/                    Cross-package integration / e2e tests
 scripts/                 Release notes, hook check, misc tooling
 ```
+
 
 ## Toolchain
 
@@ -82,6 +80,16 @@ curl http://127.0.0.1:8080/healthz
 Make sure the example config has real token/secret (`openssl rand -hex 32`)
 and that `singbox_config_path` points at a valid sing-box config.
 
+## Debugging traffic stats
+
+`cmd/statsprobe` is a small debug utility that connects to the sing-box
+v2ray_api stats service, calls `QueryStats`, and prints the raw traffic
+counters. Use it to verify that `stats_api_address` in the agent config
+matches the `experimental.v2ray_api` listen address in the sing-box config:
+
+```bash
+go run ./cmd/statsprobe <address>   # e.g. 127.0.0.1:9091
+```
 ## Running inside Docker
 
 ```bash

@@ -95,7 +95,7 @@ func newTestHandler() *InboundHandler {
 			},
 		},
 	}
-	return NewInboundHandler(nil, mockClient, logger)
+	return NewInboundHandler(mockClient, logger)
 }
 
 func TestListInbounds(t *testing.T) {
@@ -120,7 +120,7 @@ func TestListInbounds(t *testing.T) {
 func TestListInbounds_Error(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(nil, nil))
 	mockClient := &mockSingBoxClient{failOnGet: true}
-	handler := NewInboundHandler(nil, mockClient, logger)
+	handler := NewInboundHandler(mockClient, logger)
 
 	req := httptest.NewRequest(http.MethodGet, "/inbounds", nil)
 	w := httptest.NewRecorder()
@@ -508,7 +508,7 @@ func TestValidInboundTypes(t *testing.T) {
 		"vless",
 		"vmess",
 		"shadowsocks",
-		"hysteria",
+		"shadowtls",
 		"hysteria2",
 		"tuic",
 	}
@@ -525,7 +525,7 @@ func TestErrorCodes(t *testing.T) {
 func TestGetInbound_GetInboundsError(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(nil, nil))
 	mockClient := &mockSingBoxClient{failOnGet: true}
-	handler := NewInboundHandler(nil, mockClient, logger)
+	handler := NewInboundHandler(mockClient, logger)
 
 	req := httptest.NewRequest(http.MethodGet, "/inbounds/vless-reality", nil)
 	w := httptest.NewRecorder()
@@ -549,7 +549,7 @@ func TestCreateInbound_Success(t *testing.T) {
 			{Tag: "vless-reality", Type: "vless", Listen: "127.0.0.1", Port: 443},
 		},
 	}
-	handler := NewInboundHandler(nil, mockClient, logger)
+	handler := NewInboundHandler(mockClient, logger)
 
 	inbound := models.Inbound{
 		Tag:    "new-inbound",
@@ -574,7 +574,7 @@ func TestCreateInbound_Success(t *testing.T) {
 func TestCreateInbound_GetInboundsError(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(nil, nil))
 	mockClient := &mockSingBoxClient{failOnGet: true}
-	handler := NewInboundHandler(nil, mockClient, logger)
+	handler := NewInboundHandler(mockClient, logger)
 
 	inbound := models.Inbound{
 		Tag:    "new-inbound",
@@ -600,7 +600,7 @@ func TestCreateInbound_GetInboundsError(t *testing.T) {
 func TestCreateInbound_CreateError(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(nil, nil))
 	mockClient := &mockSingBoxClient{failOnCreate: true}
-	handler := NewInboundHandler(nil, mockClient, logger)
+	handler := NewInboundHandler(mockClient, logger)
 
 	inbound := models.Inbound{
 		Tag:    "new-inbound",
@@ -630,7 +630,7 @@ func TestUpdateInbound_Success(t *testing.T) {
 			{Tag: "vless-reality", Type: "vless", Listen: "127.0.0.1", Port: 443},
 		},
 	}
-	handler := NewInboundHandler(nil, mockClient, logger)
+	handler := NewInboundHandler(mockClient, logger)
 
 	inbound := models.Inbound{
 		Tag:    "vless-reality",
@@ -655,7 +655,7 @@ func TestUpdateInbound_Success(t *testing.T) {
 func TestUpdateInbound_GetInboundsError(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(nil, nil))
 	mockClient := &mockSingBoxClient{failOnGet: true}
-	handler := NewInboundHandler(nil, mockClient, logger)
+	handler := NewInboundHandler(mockClient, logger)
 
 	inbound := models.Inbound{
 		Tag:    "vless-reality",
@@ -686,7 +686,7 @@ func TestUpdateInbound_UpdateError(t *testing.T) {
 		},
 		failOnUpdate: true,
 	}
-	handler := NewInboundHandler(nil, mockClient, logger)
+	handler := NewInboundHandler(mockClient, logger)
 
 	inbound := models.Inbound{
 		Tag:    "vless-reality",
@@ -712,7 +712,7 @@ func TestUpdateInbound_UpdateError(t *testing.T) {
 func TestDeleteInbound_GetInboundsError(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(nil, nil))
 	mockClient := &mockSingBoxClient{failOnGet: true}
-	handler := NewInboundHandler(nil, mockClient, logger)
+	handler := NewInboundHandler(mockClient, logger)
 
 	req := httptest.NewRequest(http.MethodDelete, "/inbounds/vless-reality", nil)
 	w := httptest.NewRecorder()
@@ -736,7 +736,7 @@ func TestDeleteInbound_DeleteError(t *testing.T) {
 		},
 		failOnDelete: true,
 	}
-	handler := NewInboundHandler(nil, mockClient, logger)
+	handler := NewInboundHandler(mockClient, logger)
 
 	req := httptest.NewRequest(http.MethodDelete, "/inbounds/vless-reality", nil)
 	w := httptest.NewRecorder()
@@ -752,28 +752,10 @@ func TestDeleteInbound_DeleteError(t *testing.T) {
 	assert.Equal(t, CodeInternalError, response.Error.Code)
 }
 
-func TestTriggerSync_WithSyncEngine(t *testing.T) {
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	mockClient := &mockSingBoxClient{}
-	handler := NewInboundHandler(nil, mockClient, logger)
-
-	handler.triggerSync(context.Background())
-	// Should not panic, just log
-}
-
-func TestTriggerSync_WithoutSyncEngine(t *testing.T) {
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	mockClient := &mockSingBoxClient{}
-	handler := NewInboundHandler(nil, mockClient, logger)
-
-	handler.triggerSync(context.Background())
-	// Should not panic, just log
-}
-
 func TestInboundHandlerSendSuccess_EncodeError(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	mockClient := &mockSingBoxClient{}
-	handler := NewInboundHandler(nil, mockClient, logger)
+	handler := NewInboundHandler(mockClient, logger)
 
 	// Create a custom ResponseWriter that will fail on Write
 	w := &failingResponseWriter{}
@@ -785,7 +767,7 @@ func TestInboundHandlerSendSuccess_EncodeError(t *testing.T) {
 func TestInboundHandlerSendError_EncodeError(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	mockClient := &mockSingBoxClient{}
-	handler := NewInboundHandler(nil, mockClient, logger)
+	handler := NewInboundHandler(mockClient, logger)
 
 	// Create a custom ResponseWriter that will fail on Write
 	w := &failingResponseWriter{}
@@ -816,7 +798,7 @@ func (f *failingResponseWriter) WriteHeader(statusCode int) {
 func TestUpdateInbound_InvalidRequestBody(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	mockClient := &mockSingBoxClient{}
-	handler := NewInboundHandler(nil, mockClient, logger)
+	handler := NewInboundHandler(mockClient, logger)
 
 	req := httptest.NewRequest(http.MethodPut, "/inbounds/vless-reality", bytes.NewBufferString("invalid json"))
 	w := httptest.NewRecorder()
@@ -839,7 +821,7 @@ func TestUpdateInbound_ValidationError(t *testing.T) {
 			{Tag: "vless-reality", Type: "vless", Listen: "127.0.0.1", Port: 443},
 		},
 	}
-	handler := NewInboundHandler(nil, mockClient, logger)
+	handler := NewInboundHandler(mockClient, logger)
 
 	inbound := models.Inbound{
 		Tag:    "vless-reality",
@@ -865,7 +847,7 @@ func TestUpdateInbound_ValidationError(t *testing.T) {
 func TestCreateInbound_InvalidRequestBody(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	mockClient := &mockSingBoxClient{}
-	handler := NewInboundHandler(nil, mockClient, logger)
+	handler := NewInboundHandler(mockClient, logger)
 
 	req := httptest.NewRequest(http.MethodPost, "/inbounds", bytes.NewBufferString("invalid json"))
 	w := httptest.NewRecorder()

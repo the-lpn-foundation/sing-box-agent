@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -27,7 +26,7 @@ var ValidInboundTypes = []string{
 	"vless",
 	"vmess",
 	"shadowsocks",
-	"hysteria",
+	"shadowtls",
 	"hysteria2",
 	"tuic",
 }
@@ -47,17 +46,15 @@ type ErrorInfo struct {
 
 // InboundHandler handles inbound CRUD operations.
 type InboundHandler struct {
-	syncEngine *syncpkg.Engine
-	singbox    syncpkg.SingBoxClient
-	logger     *slog.Logger
+	singbox syncpkg.SingBoxClient
+	logger  *slog.Logger
 }
 
 // NewInboundHandler creates a new inbound handler.
-func NewInboundHandler(syncEngine *syncpkg.Engine, singbox syncpkg.SingBoxClient, logger *slog.Logger) *InboundHandler {
+func NewInboundHandler(singbox syncpkg.SingBoxClient, logger *slog.Logger) *InboundHandler {
 	return &InboundHandler{
-		syncEngine: syncEngine,
-		singbox:    singbox,
-		logger:     logger,
+		singbox: singbox,
+		logger:  logger,
 	}
 }
 
@@ -133,9 +130,6 @@ func (h *InboundHandler) CreateInbound(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Trigger sync to apply changes
-	h.triggerSync(r.Context())
-
 	h.sendSuccess(w, http.StatusCreated, inbound)
 }
 
@@ -192,9 +186,6 @@ func (h *InboundHandler) UpdateInbound(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Trigger sync to apply changes
-	h.triggerSync(r.Context())
-
 	h.sendSuccess(w, http.StatusOK, inbound)
 }
 
@@ -232,9 +223,6 @@ func (h *InboundHandler) DeleteInbound(w http.ResponseWriter, r *http.Request) {
 		h.sendError(w, http.StatusInternalServerError, CodeInternalError, fmt.Sprintf("Failed to delete inbound: %v", err))
 		return
 	}
-
-	// Trigger sync to apply changes
-	h.triggerSync(r.Context())
 
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -275,42 +263,6 @@ func (h *InboundHandler) validateInbound(inbound *models.Inbound) error {
 	}
 
 	return nil
-}
-
-// triggerSync triggers a sync after inbound changes.
-// It reads the current state from sing-box and reconciles it.
-func (h *InboundHandler) triggerSync(ctx context.Context) {
-	if h.syncEngine == nil {
-		h.logger.Warn("sync engine not configured, skipping sync trigger")
-		return
-	}
-
-	inbounds, err := h.singbox.GetInbounds(ctx)
-	if err != nil {
-		h.logger.Error("failed to get inbounds for sync", slog.Any("error", err))
-		return
-	}
-
-	// Build desired state from current config state
-	desired := &models.DesiredState{
-		Inbounds: inbounds,
-	}
-
-	plan, err := h.syncEngine.Reconcile(ctx, desired)
-	if err != nil {
-		h.logger.Error("reconcile failed after inbound change", slog.Any("error", err))
-		return
-	}
-
-	if plan.StepsCount() > 0 {
-		if err := h.syncEngine.Apply(ctx, plan, 0); err != nil {
-			h.logger.Error("apply failed after inbound change", slog.Any("error", err))
-			return
-		}
-		h.logger.Info("sync completed after inbound change", slog.Int("changes", plan.StepsCount()))
-	} else {
-		h.logger.Debug("no sync changes needed after inbound update")
-	}
 }
 
 // sendSuccess sends a successful response.

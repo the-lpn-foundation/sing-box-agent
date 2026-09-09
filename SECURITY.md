@@ -56,4 +56,17 @@ Out of scope (please report upstream):
   file permissions required to read/write the managed sing-box config.
 - Rotate `token` and `secret` periodically, and immediately if a host is
   compromised.
+- `/metrics` is served **unauthenticated** on both the metrics port and the
+  API port. If your infrastructure is sensitive, restrict access with a
+  firewall or bind the ports to loopback / management interfaces only.
+- The HMAC signature covers the request path only — it does **not** cover
+  the query string. Do not place sensitive or security-relevant parameters
+  in GET query strings and do not rely on the signature to protect them.
+- Generate `secret` the same way as `token`: a random value of at least 32
+  characters (e.g. `openssl rand -hex 32`). Never reuse values across
+  servers.
+- The agent writes the sing-box config atomically with `0600` permissions.
+  Run the agent as an unprivileged user and keep restrictive umask / file
+  permissions so the managed config is readable only by the agent and
+  sing-box.
 - Monitor Prometheus metrics and agent logs for unusual activity.

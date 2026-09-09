@@ -42,17 +42,42 @@ func NewPlanWithConfigManager(inboundChanges []InboundChange, userChanges []User
 	return p
 }
 
-// buildSteps converts changes into executable steps in order.
+// buildSteps converts changes into executable steps ordered by their
+// dependencies: inbound creates/updates must run before users are added to
+// them, and user deletes must run before their inbound is deleted (otherwise
+// DeleteUser fails with "inbound not found"). Reversing the order also makes
+// rollback correct (AddInbound before AddUser).
 func (p *Plan) buildSteps() {
 	p.steps = make([]Step, 0, len(p.InboundChanges)+len(p.UserChanges))
 
-	for _, change := range p.InboundChanges {
-		p.steps = append(p.steps, &InboundStep{change: change, configManager: p.configManager})
+	appendInboundSteps := func(types ...ChangeType) {
+		for _, change := range p.InboundChanges {
+			for _, t := range types {
+				if change.Type == t {
+					p.steps = append(p.steps, &InboundStep{change: change, configManager: p.configManager})
+					break
+				}
+			}
+		}
 	}
 
-	for _, change := range p.UserChanges {
-		p.steps = append(p.steps, &UserStep{change: change, configManager: p.configManager})
+	appendUserSteps := func(types ...ChangeType) {
+		for _, change := range p.UserChanges {
+			for _, t := range types {
+				if change.Type == t {
+					p.steps = append(p.steps, &UserStep{change: change, configManager: p.configManager})
+					break
+				}
+			}
+		}
 	}
+
+	appendInboundSteps(ChangeCreate)
+	appendInboundSteps(ChangeUpdate)
+	appendUserSteps(ChangeCreate)
+	appendUserSteps(ChangeUpdate)
+	appendUserSteps(ChangeDelete)
+	appendInboundSteps(ChangeDelete)
 }
 
 // Execute runs all steps in the plan.

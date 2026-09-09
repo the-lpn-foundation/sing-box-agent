@@ -70,7 +70,7 @@ func TestConfigClient_DebounceReload_CoalescesMultipleSaves(t *testing.T) {
 	}`)
 
 	reloader := &mockReloader{}
-	client := NewConfigClient(path, &Wrapper{})
+	client := NewConfigClient(path)
 	client.SetDebounceInterval(200 * time.Millisecond)
 	client.WithReloader(reloader)
 
@@ -97,7 +97,7 @@ func TestConfigClient_DebounceReload_CoalescesMultipleSaves(t *testing.T) {
 // hardcoded systemctl path.
 func TestConfigClient_DebounceReload_WithReloaderInjection(t *testing.T) {
 	path := writeDebounceTestConfig(t, `{"inbounds": []}`)
-	client := NewConfigClient(path, nil)
+	client := NewConfigClient(path)
 	ok := &mockReloader{}
 	client.WithReloader(ok)
 
@@ -127,7 +127,7 @@ func TestConfigClient_DebounceReload_RollbackOnFailure(t *testing.T) {
 	path := writeDebounceTestConfig(t, originalConfig)
 
 	reloader := &mockReloader{err: errors.New("sing-box reload failed")}
-	client := NewConfigClient(path, &Wrapper{})
+	client := NewConfigClient(path)
 	client.SetDebounceInterval(100 * time.Millisecond)
 	client.WithReloader(reloader)
 
@@ -158,7 +158,7 @@ func TestConfigClient_DebounceReload_ReloadStrategyRespected(t *testing.T) {
 	}`)
 
 	reloader := &mockReloader{}
-	client := NewConfigClient(path, &Wrapper{})
+	client := NewConfigClient(path)
 	client.SetDebounceInterval(100 * time.Millisecond)
 	client.WithReloader(reloader)
 

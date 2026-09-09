@@ -19,30 +19,24 @@ func HealthHandler(w http.ResponseWriter, r *http.Request) {
 
 // ReadyzHandler returns 200 if the server is ready to serve requests.
 // Returns 503 if not ready (sing-box not running or sync not completed).
-func ReadyzHandler(wrapper *singbox.Wrapper, syncEngine *syncpkg.Engine, coreService *singbox.CoreServiceAdapter) http.HandlerFunc {
+func ReadyzHandler(syncEngine *syncpkg.Engine, coreService *singbox.CoreServiceAdapter) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 
 		ready := true
 		checks := make(map[string]string)
 
-		// Check sing-box systemd service status (primary)
-		if coreService != nil && coreService.IsActive() {
-			checks["singbox"] = "running"
-		} else if wrapper != nil {
-			// Fallback to wrapper status
-			status := wrapper.Status()
-			if status.Running {
-				checks["singbox"] = "running"
-			} else {
-				checks["singbox"] = status.State.String()
-				ready = false
-			}
-		} else {
+		// Check sing-box systemd service status
+		switch {
+		case coreService == nil:
 			checks["singbox"] = "not_configured"
 			ready = false
+		case coreService.IsActive():
+			checks["singbox"] = "running"
+		default:
+			checks["singbox"] = "not_running"
+			ready = false
 		}
-
 		// Check sync engine status
 		if syncEngine != nil {
 			syncStatus := syncEngine.Status()

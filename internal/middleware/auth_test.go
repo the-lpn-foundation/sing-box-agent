@@ -4,6 +4,7 @@ package middleware
 //nolint:errcheck // Test file uses type assertions
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -932,4 +933,82 @@ func TestAuthMiddleware_ContextPropagation(t *testing.T) {
 	handler.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusOK, w.Code)
+}
+
+func TestAuthenticateRequest_InvalidSignatureDoesNotBurnNonce(t *testing.T) {
+	nonceCache := auth.NewNonceCache()
+	config := AuthConfig{
+		Token:      "test-token-32-characters-long-xxx",
+		Secret:     "test-secret-32-characters-long-xxx",
+		NonceCache: nonceCache,
+	}
+
+	timestamp := time.Now().Unix()
+	nonce := "test-nonce-replay-window"
+	body := []byte(`{"test":"data"}`)
+
+	// Request with a BAD signature: must be rejected and the nonce must NOT
+	// be stored in the cache (nonce check happens after signature verification).
+	badReq := httptest.NewRequest(http.MethodPost, "/test", strings.NewReader(string(body)))
+	badReq.Header.Set(HeaderAuthorization, "Bearer "+config.Token)
+	badReq.Header.Set(HeaderXSignature, "invalid-signature")
+	badReq.Header.Set(HeaderXTimestamp, fmt.Sprintf("%d", timestamp))
+	badReq.Header.Set(HeaderXNonce, nonce)
+
+	err := authenticateRequest(config, badReq)
+	require.Error(t, err)
+
+	var authErr *AuthError
+	require.True(t, errors.As(err, &authErr))
+	assert.Equal(t, CodeUnauthorized, authErr.Code)
+	assert.False(t, nonceCache.HasNonce(nonce),
+		"a request with an invalid signature must not burn a nonce-cache entry")
+
+	// The same nonce with a VALID signature must now pass: the replay window
+	// was not opened by the failed request.
+	canonicalString := auth.BuildCanonicalString(
+		nonce,
+		fmt.Sprintf("%d", timestamp),
+		http.MethodPost,
+		"/test",
+		auth.ComputeBodyHash(body),
+	)
+	signature := auth.SignRequest(canonicalString, config.Secret)
+
+	goodReq := httptest.NewRequest(http.MethodPost, "/test", strings.NewReader(string(body)))
+	goodReq.Header.Set(HeaderAuthorization, "Bearer "+config.Token)
+	goodReq.Header.Set(HeaderXSignature, signature)
+	goodReq.Header.Set(HeaderXTimestamp, fmt.Sprintf("%d", timestamp))
+	goodReq.Header.Set(HeaderXNonce, nonce)
+
+	err = authenticateRequest(config, goodReq)
+	assert.NoError(t, err, "same nonce with a valid signature must be accepted after the bad-signature request")
+	assert.True(t, nonceCache.HasNonce(nonce))
+}
+
+func TestAuthenticateRequest_BodyTooLarge(t *testing.T) {
+	nonceCache := auth.NewNonceCache()
+	config := AuthConfig{
+		Token:      "test-token-32-characters-long-xxx",
+		Secret:     "test-secret-32-characters-long-xxx",
+		NonceCache: nonceCache,
+	}
+
+	timestamp := time.Now().Unix()
+	nonce := "test-nonce-oversized"
+	oversizedBody := bytes.Repeat([]byte("a"), maxAuthBodySize+1)
+
+	req := httptest.NewRequest(http.MethodPost, "/test", bytes.NewReader(oversizedBody))
+	req.Header.Set(HeaderAuthorization, "Bearer "+config.Token)
+	req.Header.Set(HeaderXSignature, "any-signature")
+	req.Header.Set(HeaderXTimestamp, fmt.Sprintf("%d", timestamp))
+	req.Header.Set(HeaderXNonce, nonce)
+
+	err := authenticateRequest(config, req)
+	require.Error(t, err)
+
+	var authErr *AuthError
+	require.True(t, errors.As(err, &authErr))
+	assert.Equal(t, CodeUnauthorized, authErr.Code)
+	assert.Equal(t, "Request body too large", authErr.Message)
 }

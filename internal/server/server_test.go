@@ -1,9 +1,12 @@
 package server
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -16,8 +19,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/oglenyaboss/sing-box-agent/internal/auth"
 	"github.com/oglenyaboss/sing-box-agent/internal/config"
-	"github.com/oglenyaboss/sing-box-agent/internal/singbox"
 )
 
 // testConfig returns a valid test configuration
@@ -41,17 +44,11 @@ func testLogger() *slog.Logger {
 	}))
 }
 
-// testWrapper returns a mock singbox wrapper for testing
-func testWrapper() *singbox.Wrapper {
-	return singbox.NewWrapper("/tmp/test-config.json")
-}
-
 func TestNew(t *testing.T) {
 	tests := []struct {
 		name        string
 		cfg         *config.Config
 		logger      *slog.Logger
-		wrapper     *singbox.Wrapper
 		wantErr     bool
 		checkFields bool
 	}{
@@ -59,7 +56,6 @@ func TestNew(t *testing.T) {
 			name:        "valid config creates server",
 			cfg:         testConfig(),
 			logger:      testLogger(),
-			wrapper:     testWrapper(),
 			wantErr:     false,
 			checkFields: true,
 		},
@@ -74,7 +70,6 @@ func TestNew(t *testing.T) {
 				LogLevel:          "info",
 			},
 			logger:      testLogger(),
-			wrapper:     testWrapper(),
 			wantErr:     false,
 			checkFields: true,
 		},
@@ -91,7 +86,6 @@ func TestNew(t *testing.T) {
 				TLSKeyPath:        "/tmp/key.pem",
 			},
 			logger:      testLogger(),
-			wrapper:     testWrapper(),
 			wantErr:     false,
 			checkFields: true,
 		},
@@ -99,7 +93,7 @@ func TestNew(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			server := New(tt.cfg, tt.logger, tt.wrapper)
+			server := New(tt.cfg, tt.logger)
 
 			if server == nil {
 				t.Fatal("New() returned nil server")
@@ -115,9 +109,6 @@ func TestNew(t *testing.T) {
 				if server.config == nil {
 					t.Error("config field is nil")
 				}
-				if server.wrapper == nil {
-					t.Error("wrapper field is nil")
-				}
 				if server.startTime.IsZero() {
 					t.Error("startTime should be set")
 				}
@@ -128,32 +119,23 @@ func TestNew(t *testing.T) {
 
 func TestNew_NilParameters(t *testing.T) {
 	tests := []struct {
-		name    string
-		cfg     *config.Config
-		logger  *slog.Logger
-		wrapper *singbox.Wrapper
-		panic   bool
+		name   string
+		cfg    *config.Config
+		logger *slog.Logger
+		panic  bool
 	}{
 		{
-			name:    "nil config",
-			cfg:     nil,
-			logger:  testLogger(),
-			wrapper: testWrapper(),
-			panic:   true,
+			name:   "nil config",
+			cfg:    nil,
+			logger: testLogger(),
+			panic:  true,
 		},
 		{
-			name:    "nil logger",
-			cfg:     testConfig(),
-			logger:  nil,
-			wrapper: testWrapper(),
-			panic:   false,
-		},
-		{
-			name:    "nil wrapper",
-			cfg:     testConfig(),
-			logger:  testLogger(),
-			wrapper: nil,
-			panic:   false, // wrapper is not used in New()
+			name:   "nil logger",
+			cfg:    testConfig(),
+			logger: nil,
+
+			panic: false,
 		},
 	}
 
@@ -167,7 +149,7 @@ func TestNew_NilParameters(t *testing.T) {
 				}
 			}()
 
-			server := New(tt.cfg, tt.logger, tt.wrapper)
+			server := New(tt.cfg, tt.logger)
 			if tt.panic {
 				t.Error("expected panic but got none")
 			}
@@ -211,7 +193,7 @@ func TestServer_Addr(t *testing.T) {
 			cfg := testConfig()
 			cfg.APIPort = tt.port
 
-			server := New(cfg, testLogger(), testWrapper())
+			server := New(cfg, testLogger())
 			if server == nil {
 				t.Fatal("New() returned nil server")
 			}
@@ -259,7 +241,7 @@ func TestServer_Shutdown(t *testing.T) {
 				cfg.TLSKeyPath = "/tmp/key.pem"
 			}
 
-			server := New(cfg, testLogger(), testWrapper())
+			server := New(cfg, testLogger())
 			if server == nil {
 				t.Fatal("New() returned nil server")
 			}
@@ -301,7 +283,7 @@ func TestServer_Shutdown(t *testing.T) {
 
 func TestServer_Routes(t *testing.T) {
 	cfg := testConfig()
-	server := New(cfg, testLogger(), testWrapper())
+	server := New(cfg, testLogger())
 	if server == nil {
 		t.Fatal("New() returned nil server")
 	}
@@ -467,7 +449,7 @@ func TestServer_Routes(t *testing.T) {
 
 func TestServer_Routes_WithAuth(t *testing.T) {
 	cfg := testConfig()
-	server := New(cfg, testLogger(), testWrapper())
+	server := New(cfg, testLogger())
 	if server == nil {
 		t.Fatal("New() returned nil server")
 	}
@@ -580,7 +562,7 @@ func TestServer_Start_Integration(t *testing.T) {
 	cfg := testConfig()
 	cfg.APIPort = 18080
 
-	server := New(cfg, testLogger(), testWrapper())
+	server := New(cfg, testLogger())
 	if server == nil {
 		t.Fatal("New() returned nil server")
 	}
@@ -629,7 +611,7 @@ func TestServer_Start_Integration(t *testing.T) {
 
 func TestServer_Timeouts(t *testing.T) {
 	cfg := testConfig()
-	server := New(cfg, testLogger(), testWrapper())
+	server := New(cfg, testLogger())
 	if server == nil {
 		t.Fatal("New() returned nil server")
 	}
@@ -647,7 +629,7 @@ func TestServer_Timeouts(t *testing.T) {
 
 func TestServer_HandlerChain(t *testing.T) {
 	cfg := testConfig()
-	server := New(cfg, testLogger(), testWrapper())
+	server := New(cfg, testLogger())
 	if server == nil {
 		t.Fatal("New() returned nil server")
 	}
@@ -673,7 +655,7 @@ func TestServer_HandlerChain(t *testing.T) {
 
 func TestServer_StatusEndpoint(t *testing.T) {
 	cfg := testConfig()
-	server := New(cfg, testLogger(), testWrapper())
+	server := New(cfg, testLogger())
 	if server == nil {
 		t.Fatal("New() returned nil server")
 	}
@@ -712,7 +694,7 @@ func TestServer_StatusEndpoint(t *testing.T) {
 
 func TestServer_MetricsEndpoint(t *testing.T) {
 	cfg := testConfig()
-	server := New(cfg, testLogger(), testWrapper())
+	server := New(cfg, testLogger())
 	if server == nil {
 		t.Fatal("New() returned nil server")
 	}
@@ -742,7 +724,7 @@ func TestServer_MetricsEndpoint(t *testing.T) {
 
 func TestServer_ShutdownContext(t *testing.T) {
 	cfg := testConfig()
-	server := New(cfg, testLogger(), testWrapper())
+	server := New(cfg, testLogger())
 	if server == nil {
 		t.Fatal("New() returned nil server")
 	}
@@ -767,7 +749,7 @@ func TestServer_ShutdownContext(t *testing.T) {
 
 func TestServer_ConcurrentShutdown(t *testing.T) {
 	cfg := testConfig()
-	server := New(cfg, testLogger(), testWrapper())
+	server := New(cfg, testLogger())
 	if server == nil {
 		t.Fatal("New() returned nil server")
 	}
@@ -797,7 +779,7 @@ func TestServer_StartTime(t *testing.T) {
 	before := time.Now()
 
 	cfg := testConfig()
-	server := New(cfg, testLogger(), testWrapper())
+	server := New(cfg, testLogger())
 	if server == nil {
 		t.Fatal("New() returned nil server")
 	}
@@ -818,7 +800,7 @@ func TestServer_ConfigPreservation(t *testing.T) {
 	cfg.APIPort = 9999
 	cfg.LogLevel = "debug"
 
-	server := New(cfg, testLogger(), testWrapper())
+	server := New(cfg, testLogger())
 	if server == nil {
 		t.Fatal("New() returned nil server")
 	}
@@ -832,25 +814,11 @@ func TestServer_ConfigPreservation(t *testing.T) {
 	}
 }
 
-func TestServer_WrapperPreservation(t *testing.T) {
-	wrapper := testWrapper()
-	cfg := testConfig()
-
-	server := New(cfg, testLogger(), wrapper)
-	if server == nil {
-		t.Fatal("New() returned nil server")
-	}
-
-	if server.wrapper != wrapper {
-		t.Error("wrapper should be preserved")
-	}
-}
-
 func TestServer_LoggerPreservation(t *testing.T) {
 	logger := testLogger()
 	cfg := testConfig()
 
-	server := New(cfg, logger, testWrapper())
+	server := New(cfg, logger)
 	if server == nil {
 		t.Fatal("New() returned nil server")
 	}
@@ -862,7 +830,7 @@ func TestServer_LoggerPreservation(t *testing.T) {
 
 func TestServer_RouteNotFound(t *testing.T) {
 	cfg := testConfig()
-	server := New(cfg, testLogger(), testWrapper())
+	server := New(cfg, testLogger())
 	if server == nil {
 		t.Fatal("New() returned nil server")
 	}
@@ -892,7 +860,7 @@ func TestServer_RouteNotFound(t *testing.T) {
 
 func TestServer_AuthMiddleware(t *testing.T) {
 	cfg := testConfig()
-	server := New(cfg, testLogger(), testWrapper())
+	server := New(cfg, testLogger())
 	if server == nil {
 		t.Fatal("New() returned nil server")
 	}
@@ -951,8 +919,8 @@ func TestServer_MultipleServers(t *testing.T) {
 	cfg2 := testConfig()
 	cfg2.APIPort = 18083
 
-	server1 := New(cfg1, testLogger(), testWrapper())
-	server2 := New(cfg2, testLogger(), testWrapper())
+	server1 := New(cfg1, testLogger())
+	server2 := New(cfg2, testLogger())
 
 	if server1 == nil || server2 == nil {
 		t.Fatal("New() returned nil server")
@@ -973,7 +941,7 @@ func TestServer_MultipleServers(t *testing.T) {
 
 func TestServer_ShutdownIdempotent(t *testing.T) {
 	cfg := testConfig()
-	server := New(cfg, testLogger(), testWrapper())
+	server := New(cfg, testLogger())
 	if server == nil {
 		t.Fatal("New() returned nil server")
 	}
@@ -988,7 +956,7 @@ func TestServer_ShutdownIdempotent(t *testing.T) {
 
 func TestServer_StartTimeAccuracy(t *testing.T) {
 	cfg := testConfig()
-	server := New(cfg, testLogger(), testWrapper())
+	server := New(cfg, testLogger())
 	if server == nil {
 		t.Fatal("New() returned nil server")
 	}
@@ -1015,7 +983,7 @@ func TestServer_StartTimeAccuracy(t *testing.T) {
 
 func TestServer_ShutdownErrorPath(t *testing.T) {
 	cfg := testConfig()
-	server := New(cfg, testLogger(), testWrapper())
+	server := New(cfg, testLogger())
 	if server == nil {
 		t.Fatal("New() returned nil server")
 	}
@@ -1058,7 +1026,7 @@ func TestServer_NewWithDifferentConfigs(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			server := New(tt.cfg, testLogger(), testWrapper())
+			server := New(tt.cfg, testLogger())
 			if server == nil {
 				t.Fatal("New() returned nil server")
 			}
@@ -1073,9 +1041,8 @@ func TestServer_NewWithDifferentConfigs(t *testing.T) {
 func TestServer_NewFieldInitialization(t *testing.T) {
 	cfg := testConfig()
 	logger := testLogger()
-	wrapper := testWrapper()
 
-	server := New(cfg, logger, wrapper)
+	server := New(cfg, logger)
 	if server == nil {
 		t.Fatal("New() returned nil server")
 	}
@@ -1089,9 +1056,6 @@ func TestServer_NewFieldInitialization(t *testing.T) {
 	}
 	if server.config == nil {
 		t.Error("config should be initialized")
-	}
-	if server.wrapper == nil {
-		t.Error("wrapper should be initialized")
 	}
 	if server.startTime.IsZero() {
 		t.Error("startTime should be initialized")
@@ -1119,7 +1083,7 @@ func TestServer_AddrConsistency(t *testing.T) {
 	cfg := testConfig()
 	cfg.APIPort = 12345
 
-	server := New(cfg, testLogger(), testWrapper())
+	server := New(cfg, testLogger())
 	if server == nil {
 		t.Fatal("New() returned nil server")
 	}
@@ -1140,7 +1104,7 @@ func TestServer_AddrConsistency(t *testing.T) {
 
 func TestServer_MultipleShutdownCalls(t *testing.T) {
 	cfg := testConfig()
-	server := New(cfg, testLogger(), testWrapper())
+	server := New(cfg, testLogger())
 	if server == nil {
 		t.Fatal("New() returned nil server")
 	}
@@ -1156,7 +1120,7 @@ func TestServer_MultipleShutdownCalls(t *testing.T) {
 
 func TestServer_Routes_AllEndpoints(t *testing.T) {
 	cfg := testConfig()
-	server := New(cfg, testLogger(), testWrapper())
+	server := New(cfg, testLogger())
 	if server == nil {
 		t.Fatal("New() returned nil server")
 	}
@@ -1189,7 +1153,7 @@ func TestServer_Routes_AllEndpoints(t *testing.T) {
 
 			if ep.path == "/readyz" {
 				if resp.StatusCode != http.StatusServiceUnavailable {
-					t.Errorf("expected status 503 for %s %s (nil wrapper), got %d", ep.method, ep.path, resp.StatusCode)
+					t.Errorf("expected status 503 for %s %s, got %d", ep.method, ep.path, resp.StatusCode)
 				}
 			} else if resp.StatusCode != http.StatusOK {
 				t.Errorf("expected status 200 for %s %s, got %d", ep.method, ep.path, resp.StatusCode)
@@ -1200,7 +1164,7 @@ func TestServer_Routes_AllEndpoints(t *testing.T) {
 
 func TestServer_Routes_AllInboundEndpoints(t *testing.T) {
 	cfg := testConfig()
-	server := New(cfg, testLogger(), testWrapper())
+	server := New(cfg, testLogger())
 	if server == nil {
 		t.Fatal("New() returned nil server")
 	}
@@ -1241,7 +1205,7 @@ func TestServer_Routes_AllInboundEndpoints(t *testing.T) {
 
 func TestServer_Routes_AllSubscriptionEndpoints(t *testing.T) {
 	cfg := testConfig()
-	server := New(cfg, testLogger(), testWrapper())
+	server := New(cfg, testLogger())
 	if server == nil {
 		t.Fatal("New() returned nil server")
 	}
@@ -1274,7 +1238,7 @@ func TestServer_Routes_AllSubscriptionEndpoints(t *testing.T) {
 
 func TestServer_NewRouteSetup(t *testing.T) {
 	cfg := testConfig()
-	server := New(cfg, testLogger(), testWrapper())
+	server := New(cfg, testLogger())
 	if server == nil {
 		t.Fatal("New() returned nil server")
 	}
@@ -1321,7 +1285,7 @@ func TestServer_NewWithTLSConfig(t *testing.T) {
 	cfg.TLSCertPath = "/tmp/cert.pem"
 	cfg.TLSKeyPath = "/tmp/key.pem"
 
-	server := New(cfg, testLogger(), testWrapper())
+	server := New(cfg, testLogger())
 	if server == nil {
 		t.Fatal("New() returned nil server")
 	}
@@ -1356,7 +1320,7 @@ func TestServer_NewWithDifferentLogLevels(t *testing.T) {
 			cfg := testConfig()
 			cfg.LogLevel = level
 
-			server := New(cfg, testLogger(), testWrapper())
+			server := New(cfg, testLogger())
 			if server == nil {
 				t.Fatal("New() returned nil server")
 			}
@@ -1376,7 +1340,7 @@ func TestServer_NewWithDifferentPorts(t *testing.T) {
 			cfg := testConfig()
 			cfg.APIPort = port
 
-			server := New(cfg, testLogger(), testWrapper())
+			server := New(cfg, testLogger())
 			if server == nil {
 				t.Fatal("New() returned nil server")
 			}
@@ -1391,7 +1355,7 @@ func TestServer_NewWithDifferentPorts(t *testing.T) {
 
 func TestServer_NewHandlerChain(t *testing.T) {
 	cfg := testConfig()
-	server := New(cfg, testLogger(), testWrapper())
+	server := New(cfg, testLogger())
 	if server == nil {
 		t.Fatal("New() returned nil server")
 	}
@@ -1419,7 +1383,7 @@ func TestServer_NewHandlerChain(t *testing.T) {
 
 func TestServer_NewMiddlewareSetup(t *testing.T) {
 	cfg := testConfig()
-	server := New(cfg, testLogger(), testWrapper())
+	server := New(cfg, testLogger())
 	if server == nil {
 		t.Fatal("New() returned nil server")
 	}
@@ -1441,7 +1405,7 @@ func TestServer_NewMiddlewareSetup(t *testing.T) {
 
 func TestServer_NewAllRoutesRegistered(t *testing.T) {
 	cfg := testConfig()
-	server := New(cfg, testLogger(), testWrapper())
+	server := New(cfg, testLogger())
 	if server == nil {
 		t.Fatal("New() returned nil server")
 	}
@@ -1479,7 +1443,7 @@ func TestServer_NewAllRoutesRegistered(t *testing.T) {
 
 func TestServer_NewAuthProtectedRoutes(t *testing.T) {
 	cfg := testConfig()
-	server := New(cfg, testLogger(), testWrapper())
+	server := New(cfg, testLogger())
 	if server == nil {
 		t.Fatal("New() returned nil server")
 	}
@@ -1520,7 +1484,7 @@ func TestServer_NewConfigFields(t *testing.T) {
 	cfg.LogLevel = "debug"
 	cfg.SingBoxConfigPath = "/custom/config.json"
 
-	server := New(cfg, testLogger(), testWrapper())
+	server := New(cfg, testLogger())
 	if server == nil {
 		t.Fatal("New() returned nil server")
 	}
@@ -1543,9 +1507,8 @@ func TestServer_NewConfigFields(t *testing.T) {
 func TestServer_NewServerFields(t *testing.T) {
 	cfg := testConfig()
 	logger := testLogger()
-	wrapper := testWrapper()
 
-	server := New(cfg, logger, wrapper)
+	server := New(cfg, logger)
 	if server == nil {
 		t.Fatal("New() returned nil server")
 	}
@@ -1560,9 +1523,7 @@ func TestServer_NewServerFields(t *testing.T) {
 	if server.config != cfg {
 		t.Error("config should be preserved")
 	}
-	if server.wrapper != wrapper {
-		t.Error("wrapper should be preserved")
-	}
+
 	if server.startTime.IsZero() {
 		t.Error("startTime should be set")
 	}
@@ -1570,7 +1531,7 @@ func TestServer_NewServerFields(t *testing.T) {
 
 func TestServer_NewHTTPServerConfig(t *testing.T) {
 	cfg := testConfig()
-	server := New(cfg, testLogger(), testWrapper())
+	server := New(cfg, testLogger())
 	if server == nil {
 		t.Fatal("New() returned nil server")
 	}
@@ -1602,7 +1563,7 @@ func TestRouteRegistration(t *testing.T) {
 		Secret:  "test-secret-32-characters-long-xxx",
 	}
 
-	srv := New(cfg, logger, nil)
+	srv := New(cfg, logger)
 	require.NotNil(t, srv)
 
 	// Test that we can make requests to various routes
@@ -1654,7 +1615,7 @@ func TestShutdownServer_Idempotent(t *testing.T) {
 		Secret:  "test-secret-32-characters-long-xxx",
 	}
 
-	srv := New(cfg, logger, nil)
+	srv := New(cfg, logger)
 	require.NotNil(t, srv)
 
 	// First shutdown
@@ -1667,4 +1628,164 @@ func TestShutdownServer_Idempotent(t *testing.T) {
 
 	// Verify shutdown flag is set
 	assert.True(t, srv.shutdown)
+}
+
+// signedAuthedRequest builds a request with valid HMAC auth headers for the
+// given config. Each call must use a unique nonce, otherwise the nonce cache
+// rejects the request as a replay.
+func signedAuthedRequest(t *testing.T, cfg *config.Config, method, path, nonce string, body []byte) *http.Request {
+	t.Helper()
+
+	timestamp := time.Now().Unix()
+	canonical := auth.BuildCanonicalString(
+		nonce,
+		strconv.FormatInt(timestamp, 10),
+		method,
+		path,
+		auth.ComputeBodyHash(body),
+	)
+	signature := auth.SignRequest(canonical, cfg.Secret)
+
+	var req *http.Request
+	if len(body) > 0 {
+		req = httptest.NewRequest(method, path, bytes.NewReader(body))
+	} else {
+		req = httptest.NewRequest(method, path, nil)
+	}
+	req.Header.Set("Authorization", "Bearer "+cfg.Token)
+	req.Header.Set("X-Signature", signature)
+	req.Header.Set("X-Timestamp", strconv.FormatInt(timestamp, 10))
+	req.Header.Set("X-Nonce", nonce)
+	return req
+}
+
+func TestServer_IdempotencyMiddleware_IdenticalResponses(t *testing.T) {
+	cfg := testConfig()
+	srv := New(cfg, testLogger())
+	require.NotNil(t, srv)
+
+	body := []byte(`{}`)
+
+	req1 := signedAuthedRequest(t, cfg, http.MethodPost, "/inbounds", "idem-nonce-1", body)
+	req1.Header.Set("Idempotency-Key", "idem-key-1")
+	w1 := httptest.NewRecorder()
+	srv.httpServer.Handler.ServeHTTP(w1, req1)
+
+	req2 := signedAuthedRequest(t, cfg, http.MethodPost, "/inbounds", "idem-nonce-2", body)
+	req2.Header.Set("Idempotency-Key", "idem-key-1")
+	w2 := httptest.NewRecorder()
+	srv.httpServer.Handler.ServeHTTP(w2, req2)
+
+	assert.Equal(t, w1.Code, w2.Code, "replayed request must return the same status code")
+	assert.Equal(t, w1.Body.String(), w2.Body.String(), "replayed request must return the same body")
+}
+
+func TestServer_IdempotencyMiddleware_ConflictOnDifferentBody(t *testing.T) {
+	cfg := testConfig()
+	srv := New(cfg, testLogger())
+	require.NotNil(t, srv)
+
+	req1 := signedAuthedRequest(t, cfg, http.MethodPost, "/inbounds", "idem-nonce-3", []byte(`{}`))
+	req1.Header.Set("Idempotency-Key", "idem-key-2")
+	w1 := httptest.NewRecorder()
+	srv.httpServer.Handler.ServeHTTP(w1, req1)
+
+	req2 := signedAuthedRequest(t, cfg, http.MethodPost, "/inbounds", "idem-nonce-4", []byte(`{"tag":"other"}`))
+	req2.Header.Set("Idempotency-Key", "idem-key-2")
+	w2 := httptest.NewRecorder()
+	srv.httpServer.Handler.ServeHTTP(w2, req2)
+
+	require.Equal(t, http.StatusConflict, w2.Code)
+	var resp struct {
+		Error struct {
+			Code string `json:"code"`
+		} `json:"error"`
+	}
+	require.NoError(t, json.NewDecoder(w2.Body).Decode(&resp))
+	assert.Equal(t, "IDEMPOTENCY_CONFLICT", resp.Error.Code)
+}
+
+func TestServer_MetricsPort_ServesMetrics(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	cfg := testConfig()
+	cfg.APIPort = 18085
+	cfg.MetricsPort = 19090
+
+	srv := New(cfg, testLogger())
+	require.NotNil(t, srv)
+
+	serverErr := make(chan error, 1)
+	go func() {
+		serverErr <- srv.Start()
+	}()
+
+	// Wait for the metrics server to come up.
+	var resp *http.Response
+	var err error
+	deadline := time.Now().Add(5 * time.Second)
+	metricsURL := "http://127.0.0.1:" + strconv.Itoa(cfg.MetricsPort) + "/metrics"
+	for {
+		resp, err = http.Get(metricsURL)
+		if err == nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("metrics server did not come up: %v", err)
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+	require.NoError(t, srv.Shutdown())
+
+	select {
+	case err := <-serverErr:
+		assert.NoError(t, err)
+	case <-time.After(5 * time.Second):
+		t.Fatal("server did not stop within timeout")
+	}
+}
+
+func TestServer_MetricsPortOccupied_ServerStillStarts(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	// Occupy the metrics port with another listener.
+	blocker, err := net.Listen("tcp", "127.0.0.1:19091")
+	require.NoError(t, err)
+	defer func() { _ = blocker.Close() }()
+
+	cfg := testConfig()
+	cfg.APIPort = 18086
+	cfg.MetricsPort = 19091
+
+	srv := New(cfg, testLogger())
+	require.NotNil(t, srv)
+
+	serverErr := make(chan error, 1)
+	go func() {
+		serverErr <- srv.Start()
+	}()
+
+	// The API server must be up despite the busy metrics port.
+	time.Sleep(200 * time.Millisecond)
+	resp, err := http.Get("http://127.0.0.1:" + strconv.Itoa(cfg.APIPort) + "/healthz")
+	require.NoError(t, err, "API server must start even when the metrics port is busy")
+	defer func() { _ = resp.Body.Close() }()
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+	require.NoError(t, srv.Shutdown())
+
+	select {
+	case err := <-serverErr:
+		assert.NoError(t, err)
+	case <-time.After(5 * time.Second):
+		t.Fatal("server did not stop within timeout")
+	}
 }

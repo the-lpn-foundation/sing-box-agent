@@ -10,7 +10,7 @@
 
 ### 1.1 Purpose
 
-A lightweight Go service that embeds sing-box as a library and provides a REST API for remote management. Designed to replace 3x-ui panels and SSH-based config management while maintaining multi-server architecture.
+A lightweight Go service that manages a local sing-box instance as a separate process (systemd / signal / custom command) and provides a REST API for remote management. Designed to replace 3x-ui panels and SSH-based config management while maintaining multi-server architecture. The agent does not link sing-box as a Go library.
 
 ### 1.2 Goals
 
@@ -131,6 +131,10 @@ body_hash = SHA256(request_body).hexdigest()  // empty string if no body
 signature = HMAC-SHA256(canonical_string, secret).hexdigest()
 ```
 
+**Important:** only the request path is signed. The query string is NOT
+covered by the signature — clients must not rely on signing to protect
+query parameters of GET requests.
+
 **Replay Protection:**
 
 - Timestamp: Unix seconds, reject if |server_time - timestamp| > 300s
@@ -156,6 +160,8 @@ Idempotency-Key: device-123-create-user
 - Keys stored in LRU cache (24h TTL, 10k max entries)
 - Keys are per-server scope (not global)
 - Body comparison: SHA256 hash equality
+- Idempotency middleware is enabled on all mutating protected endpoints;
+  requests without an `Idempotency-Key` header pass through unchanged
 
 ### 3.5 Identity Model
 
@@ -194,6 +200,13 @@ POST /core/reload
 POST /core/restart
 GET /core/config  → sensitive fields REDACTED
 ```
+
+**Endpoint notes:**
+
+- `GET /healthz` returns a plain-text body `OK` (`text/plain`), not JSON.
+- `GET /stats/online` currently always returns an empty list — online-user
+  detection is not implemented yet (it requires the sing-box clash API).
+- Idempotency is enforced on all mutating protected endpoints.
 
 ---
 
@@ -318,8 +331,7 @@ POST /api/v1/servers/:serverId/agent/traffic
 
 ### Phase 1: Core (2 weeks)
 
-- sing-box embedding
-- REST API with envelope
+- sing-box process management (systemd / signal / command)
 - Auth (token + signing)
 - Idempotency
 - VLESS + Reality
@@ -336,7 +348,7 @@ POST /api/v1/servers/:serverId/agent/traffic
 
 ### Phase 4: Integration (1 week)
 
-- Upstream AgentClient, reconciler, DB migrations, rollback tooling
+- Upstream AgentClient, reconciler, rollback tooling
 
 ---
 

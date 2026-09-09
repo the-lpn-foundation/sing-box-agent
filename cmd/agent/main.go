@@ -52,10 +52,7 @@ func main() {
 	)
 
 	// sing-box is managed by systemd externally. Do not start or stop it from the agent.
-	wrapper := singbox.NewWrapper(cfg.SingBoxConfigPath)
-
 	serverOpts := server.ServerOptions{Version: Version}
-
 	// Attach a v2ray_api stats client to the /stats endpoints so they return
 	// real per-inbound and per-user counters (best-effort; disabled if the
 	// sing-box v2ray_api listener is unreachable).
@@ -85,15 +82,15 @@ func main() {
 		logger.Info("running in standalone mode (no central API)")
 	}
 
-	srv := server.New(cfg, logger, wrapper, serverOpts)
+	srv := server.New(cfg, logger, serverOpts)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	// Start inbound traffic metrics collection (best-effort; disabled if the
 	// sing-box v2ray_api is unreachable).
 	go func() {
-		configClient := singbox.NewConfigClient(cfg.SingBoxConfigPath, wrapper)
-		if err := metrics.RunStatsLoop(ctx, logger, cfg.StatsAPIAddress, configClient); err != nil {
+		configClient := singbox.NewConfigClient(cfg.SingBoxConfigPath)
+		if err := metrics.RunStatsLoop(ctx, logger, cfg.StatsAPIAddress, configClient, Version); err != nil {
 			logger.Warn("stats loop failed", slog.Any("error", err))
 		}
 	}()
@@ -141,6 +138,6 @@ func newLogger(level string) *slog.Logger {
 		logLevel.Set(slog.LevelInfo)
 	}
 
-	handler := slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: logLevel})
+	handler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: logLevel})
 	return slog.New(handler)
 }

@@ -109,7 +109,7 @@ func setupE2EServer(t *testing.T) *httptest.Server {
 
 	// instantiate sync engine (not used by tests directly)
 	_ = syncpkg.NewEngine(mockSingBox)
-	userHandler := handlers.NewUserHandler()
+	userHandler := handlers.NewUserHandlerWithClient(mockSingBox)
 
 	nonceCache := auth.NewNonceCache()
 	authConfig := middleware.AuthConfig{

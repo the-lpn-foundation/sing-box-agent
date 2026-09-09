@@ -20,6 +20,7 @@ import (
 	"github.com/oglenyaboss/sing-box-agent/internal/handlers"
 	"github.com/oglenyaboss/sing-box-agent/internal/middleware"
 	"github.com/oglenyaboss/sing-box-agent/internal/singbox"
+	"github.com/oglenyaboss/sing-box-agent/internal/store"
 	syncpkg "github.com/oglenyaboss/sing-box-agent/internal/sync"
 )
 
@@ -36,16 +37,16 @@ const (
 
 // Server wraps http.Server with graceful shutdown and signal handling.
 type Server struct {
-	httpServer *http.Server
-	logger     *slog.Logger
-	config     *config.Config
-	startTime  time.Time
-	shutdownMu sync.Mutex
-	shutdown   bool
-	wrapper    *singbox.Wrapper
-	syncEngine *syncpkg.Engine
-	version    string
-	lifecycle  *Lifecycle
+	httpServer    *http.Server
+	metricsServer *http.Server
+	logger        *slog.Logger
+	config        *config.Config
+	startTime     time.Time
+	shutdownMu    sync.Mutex
+	shutdown      bool
+	syncEngine    *syncpkg.Engine
+	version       string
+	lifecycle     *Lifecycle
 }
 
 // ServerOptions holds optional dependencies for the server.
@@ -56,9 +57,8 @@ type ServerOptions struct {
 }
 
 // New creates a new HTTP server with the given config and logger.
-func New(cfg *config.Config, logger *slog.Logger, wrapper *singbox.Wrapper, opts ...ServerOptions) *Server {
+func New(cfg *config.Config, logger *slog.Logger, opts ...ServerOptions) *Server {
 	startTime := time.Now()
-
 	var version string
 	var fastifyClient *client.Client
 	var statsClient *singbox.V2RayStatsClient
@@ -81,7 +81,12 @@ func New(cfg *config.Config, logger *slog.Logger, wrapper *singbox.Wrapper, opts
 		Logger:     logger,
 	})
 
-	configClient := singbox.NewConfigClient(cfg.SingBoxConfigPath, wrapper)
+	// Idempotency protection for mutating protected routes (no-op for GET
+	// and for requests without an Idempotency-Key header).
+	idemStore := store.NewIdempotencyStore()
+	idemMiddleware := middleware.IdempotencyMiddleware(idemStore)
+
+	configClient := singbox.NewConfigClient(cfg.SingBoxConfigPath)
 	reloader, err := buildReloader(cfg)
 	if err != nil {
 		logger.Error("invalid reload configuration, falling back to systemctl",
@@ -92,18 +97,21 @@ func New(cfg *config.Config, logger *slog.Logger, wrapper *singbox.Wrapper, opts
 	// (POST/PUT/DELETE /inbounds/{tag}/users) respect reload_strategy
 	// and benefit from debounced reloads — same as /sync/desired-state.
 	configClient = configClient.WithReloader(reloader)
-	configManager := syncpkg.NewConfigManagerWithReloader(cfg.SingBoxConfigPath, wrapper, reloader)
+	configManager := syncpkg.NewConfigManagerWithReloader(cfg.SingBoxConfigPath, reloader)
 	syncEngine := syncpkg.NewEngineWithConfigManager(configClient, configManager)
 
-	inboundHandler := handlers.NewInboundHandler(syncEngine, configClient, logger)
+	inboundHandler := handlers.NewInboundHandler(configClient, logger)
 	userHandler := handlers.NewUserHandlerWithClient(configClient)
 	subscriptionHandler := handlers.NewSubscriptionHandler(logger, configClient)
 	syncHandler := handlers.NewSyncHandler(syncEngine, configClient, logger)
 
-	coreService := singbox.NewCoreServiceAdapter(wrapper, cfg.SingBoxConfigPath)
+	coreService := singbox.NewCoreServiceAdapter(cfg.SingBoxConfigPath)
 	if strings.EqualFold(cfg.ReloadStrategy, "signal") && cfg.ReloadTarget != "" {
 		coreService = coreService.WithPIDFile(cfg.ReloadTarget)
 	}
+	// Inject the reloader into CoreService so POST /core/reload respects
+	// reload_strategy instead of the hardcoded systemctl path.
+	coreService = coreService.WithReloader(reloader)
 	coreHandler := handlers.NewCoreHandler(coreService, logger)
 
 	statsProvider := singbox.NewStatsProviderAdapter(configClient)
@@ -114,13 +122,13 @@ func New(cfg *config.Config, logger *slog.Logger, wrapper *singbox.Wrapper, opts
 
 	// Public endpoints (no auth)
 	mux.HandleFunc("/healthz", HealthHandler)
-	mux.HandleFunc("/readyz", ReadyzHandler(wrapper, syncEngine, coreService))
+	mux.HandleFunc("/readyz", ReadyzHandler(syncEngine, coreService))
 	mux.HandleFunc("/status", StatusHandler(startTime, version, syncEngine))
 
-	mux.Handle("/metrics", MetricsHandler())
+	mux.Handle("/metrics", MetricsHandler(cfg.MetricsUsername, cfg.MetricsPassword))
 
 	// Protected endpoints (auth required)
-	mux.Handle("/inbounds", authMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	mux.Handle("/inbounds", authMiddleware(idemMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:
 			inboundHandler.ListInbounds(w, r)
@@ -129,8 +137,8 @@ func New(cfg *config.Config, logger *slog.Logger, wrapper *singbox.Wrapper, opts
 		default:
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		}
-	})))
-	mux.Handle("/inbounds/", authMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	}))))
+	mux.Handle("/inbounds/", authMiddleware(idemMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		rest := strings.TrimPrefix(r.URL.Path, "/inbounds/")
 		if rest == "" {
 			http.NotFound(w, r)
@@ -173,7 +181,7 @@ func New(cfg *config.Config, logger *slog.Logger, wrapper *singbox.Wrapper, opts
 		default:
 			http.NotFound(w, r)
 		}
-	})))
+	}))))
 
 	// Stats endpoints
 	mux.Handle("/stats/traffic", authMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -192,13 +200,13 @@ func New(cfg *config.Config, logger *slog.Logger, wrapper *singbox.Wrapper, opts
 	})))
 
 	// Sync endpoints
-	mux.Handle("/sync/desired-state", authMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	mux.Handle("/sync/desired-state", authMiddleware(idemMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
 		syncHandler.ApplyDesiredState(w, r)
-	})))
+	}))))
 	mux.Handle("/sync/status", authMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -208,20 +216,20 @@ func New(cfg *config.Config, logger *slog.Logger, wrapper *singbox.Wrapper, opts
 	})))
 
 	// Core endpoints
-	mux.Handle("/core/reload", authMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	mux.Handle("/core/reload", authMiddleware(idemMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
 		coreHandler.ReloadConfig(w, r)
-	})))
-	mux.Handle("/core/restart", authMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	}))))
+	mux.Handle("/core/restart", authMiddleware(idemMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
 		coreHandler.RestartCore(w, r)
-	})))
+	}))))
 	mux.Handle("/core/config", authMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -231,13 +239,13 @@ func New(cfg *config.Config, logger *slog.Logger, wrapper *singbox.Wrapper, opts
 	})))
 
 	// Subscription endpoints
-	mux.Handle("/subscription/generate", authMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	mux.Handle("/subscription/generate", authMiddleware(idemMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
 		subscriptionHandler.GenerateSubscription(w, r)
-	})))
+	}))))
 	mux.Handle("/subscription/", authMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -250,6 +258,17 @@ func New(cfg *config.Config, logger *slog.Logger, wrapper *singbox.Wrapper, opts
 
 	lifecycle := NewLifecycle(fastifyClient, syncEngine, logger, version)
 
+	var metricsServer *http.Server
+	if cfg.MetricsPort > 0 {
+		metricsServer = &http.Server{
+			Addr:         fmt.Sprintf(":%d", cfg.MetricsPort),
+			Handler:      MetricsHandler(cfg.MetricsUsername, cfg.MetricsPassword),
+			ReadTimeout:  DefaultReadTimeout,
+			WriteTimeout: DefaultWriteTimeout,
+			IdleTimeout:  DefaultIdleTimeout,
+		}
+	}
+
 	return &Server{
 		httpServer: &http.Server{
 			Addr:         fmt.Sprintf(":%d", cfg.APIPort),
@@ -258,13 +277,13 @@ func New(cfg *config.Config, logger *slog.Logger, wrapper *singbox.Wrapper, opts
 			WriteTimeout: DefaultWriteTimeout,
 			IdleTimeout:  DefaultIdleTimeout,
 		},
-		logger:     logger,
-		config:     cfg,
-		startTime:  startTime,
-		wrapper:    wrapper,
-		syncEngine: syncEngine,
-		version:    version,
-		lifecycle:  lifecycle,
+		metricsServer: metricsServer,
+		logger:        logger,
+		config:        cfg,
+		startTime:     startTime,
+		syncEngine:    syncEngine,
+		version:       version,
+		lifecycle:     lifecycle,
 	}
 }
 
@@ -307,6 +326,16 @@ func (s *Server) Start() error {
 		}
 	}()
 
+	// Start the dedicated metrics server in the background. A bind/serve
+	// failure must never take the agent down — log a warning and continue.
+	if s.metricsServer != nil {
+		go func() {
+			if err := s.metricsServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+				s.logger.Warn("metrics server failed", slog.Any("error", err))
+			}
+		}()
+	}
+
 	// Wait for shutdown signal or server error
 	select {
 	case <-ctx.Done():
@@ -344,6 +373,14 @@ func (s *Server) shutdownServer() error {
 	if err := s.httpServer.Shutdown(shutdownCtx); err != nil {
 		s.logger.Error("shutdown error", slog.Any("error", err))
 		return fmt.Errorf("shutdown error: %w", err)
+	}
+
+	// Shut down the metrics server with the same timeout. Failures are
+	// logged but must not mask a successful API server shutdown.
+	if s.metricsServer != nil {
+		if err := s.metricsServer.Shutdown(shutdownCtx); err != nil {
+			s.logger.Warn("metrics server shutdown error", slog.Any("error", err))
+		}
 	}
 
 	s.logger.Info("server shutdown complete")

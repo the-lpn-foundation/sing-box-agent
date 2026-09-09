@@ -17,31 +17,10 @@ import (
 )
 
 func TestNewConfigClient(t *testing.T) {
-	tests := []struct {
-		name       string
-		configPath string
-		wrapper    *Wrapper
-	}{
-		{
-			name:       "with wrapper",
-			configPath: "/path/to/config.json",
-			wrapper:    &Wrapper{},
-		},
-		{
-			name:       "without wrapper",
-			configPath: "/path/to/config.json",
-			wrapper:    nil,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			client := NewConfigClient(tt.configPath, tt.wrapper)
-			require.NotNil(t, client)
-			assert.Equal(t, tt.configPath, client.configPath)
-			assert.Equal(t, tt.wrapper, client.wrapper)
-		})
-	}
+	client := NewConfigClient("/path/to/config.json")
+	require.NotNil(t, client)
+	assert.Equal(t, "/path/to/config.json", client.configPath)
+	assert.Equal(t, reloadDebounceInterval, client.debounceInterval)
 }
 
 func TestConfigClient_GetInbounds(t *testing.T) {
@@ -186,7 +165,7 @@ func TestConfigClient_GetInbounds(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			path := tt.setup(t)
-			client := NewConfigClient(path, nil)
+			client := NewConfigClient(path)
 			inbounds, err := client.GetInbounds(context.Background())
 
 			if tt.wantErr {
@@ -445,7 +424,7 @@ func TestConfigClient_GetUsers(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			path := tt.setup(t)
-			client := NewConfigClient(path, nil)
+			client := NewConfigClient(path)
 			users, err := client.GetUsers(context.Background())
 
 			if tt.wantErr {
@@ -547,7 +526,7 @@ func TestConfigClient_CreateInbound(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			path := tt.setup(t)
-			client := NewConfigClient(path, nil)
+			client := NewConfigClient(path)
 			err := client.CreateInbound(context.Background(), tt.inbound)
 
 			if tt.wantErr {
@@ -638,7 +617,7 @@ func TestConfigClient_UpdateInbound(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			path := tt.setup(t)
-			client := NewConfigClient(path, nil)
+			client := NewConfigClient(path)
 			err := client.UpdateInbound(context.Background(), tt.inbound)
 
 			if tt.wantErr {
@@ -709,7 +688,7 @@ func TestConfigClient_DeleteInbound(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			path := tt.setup(t)
-			client := NewConfigClient(path, nil)
+			client := NewConfigClient(path)
 			err := client.DeleteInbound(context.Background(), tt.tag)
 
 			if tt.wantErr {
@@ -845,7 +824,7 @@ func TestConfigClient_CreateUser(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			path := tt.setup(t)
-			client := NewConfigClient(path, nil)
+			client := NewConfigClient(path)
 			err := client.CreateUser(context.Background(), tt.user)
 
 			if tt.wantErr {
@@ -944,7 +923,7 @@ func TestConfigClient_UpdateUser(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			path := tt.setup(t)
-			client := NewConfigClient(path, nil)
+			client := NewConfigClient(path)
 			err := client.UpdateUser(context.Background(), tt.user)
 
 			if tt.wantErr {
@@ -1074,7 +1053,7 @@ func TestConfigClient_DeleteUser(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			path := tt.setup(t)
-			client := NewConfigClient(path, nil)
+			client := NewConfigClient(path)
 			err := client.DeleteUser(context.Background(), tt.subID)
 
 			if tt.wantErr {
@@ -1598,82 +1577,28 @@ func TestHelperFunctions(t *testing.T) {
 }
 
 func TestConfigClient_saveAndReload(t *testing.T) {
-	// This test triggers an async systemctl reload when a Wrapper is set.
+	// This test triggers an async systemctl reload after the debounce window.
 	// Skip by default so `go test ./...` works on any Linux dev box without
 	// requiring sudo/polkit. Opt in with SINGBOX_AGENT_LIVE_SYSTEMCTL=1.
 	if os.Getenv("SINGBOX_AGENT_LIVE_SYSTEMCTL") == "" {
 		t.Skip("skipping; set SINGBOX_AGENT_LIVE_SYSTEMCTL=1 to run")
 	}
 
-	tests := []struct {
-		name    string
-		setup   func(t *testing.T) string
-		wrapper *Wrapper
-		wantErr bool
-	}{
-		{
-			name: "save without wrapper",
-			setup: func(t *testing.T) string {
-				dir := t.TempDir()
-				path := filepath.Join(dir, "config.json")
-				config := `{"inbounds": []}`
-				err := os.WriteFile(path, []byte(config), 0o644)
-				require.NoError(t, err)
-				return path
-			},
-			wrapper: nil,
-			wantErr: false,
-		},
-		{
-			name: "save with wrapper - reload succeeds",
-			setup: func(t *testing.T) string {
-				dir := t.TempDir()
-				path := filepath.Join(dir, "config.json")
-				config := `{"inbounds": []}`
-				err := os.WriteFile(path, []byte(config), 0o644)
-				require.NoError(t, err)
-				return path
-			},
-			wrapper: &Wrapper{},
-			wantErr: false,
-		},
-		{
-			name: "save with wrapper - reload fails but rollback succeeds",
-			setup: func(t *testing.T) string {
-				dir := t.TempDir()
-				path := filepath.Join(dir, "config.json")
-				config := `{"inbounds": []}`
-				err := os.WriteFile(path, []byte(config), 0o644)
-				require.NoError(t, err)
-				return path
-			},
-			wrapper: &Wrapper{},
-			wantErr: false,
+	path := filepath.Join(t.TempDir(), "config.json")
+	require.NoError(t, os.WriteFile(path, []byte(`{"inbounds": []}`), 0o644))
+	client := NewConfigClient(path)
+	root := map[string]interface{}{
+		"inbounds": []interface{}{
+			map[string]interface{}{"tag": "in-1"},
 		},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			path := tt.setup(t)
-			client := NewConfigClient(path, tt.wrapper)
-			root := map[string]interface{}{
-				"inbounds": []interface{}{
-					map[string]interface{}{"tag": "in-1"},
-				},
-			}
+	err := client.saveAndReload(context.Background(), root)
 
-			err := client.saveAndReload(context.Background(), root)
-
-			if tt.wantErr {
-				require.Error(t, err)
-			} else {
-				require.NoError(t, err)
-				data, err := os.ReadFile(path)
-				require.NoError(t, err)
-				assert.NotEmpty(t, data)
-			}
-		})
-	}
+	require.NoError(t, err)
+	data, err := os.ReadFile(path)
+	require.NoError(t, err)
+	assert.NotEmpty(t, data)
 }
 
 func TestConfigClient_reloadSystemService(t *testing.T) {
@@ -1685,7 +1610,7 @@ func TestConfigClient_reloadSystemService(t *testing.T) {
 		{
 			name: "systemctl not available",
 			setup: func(t *testing.T) *ConfigClient {
-				client := NewConfigClient("/tmp/config.json", nil)
+				client := NewConfigClient("/tmp/config.json")
 				return client
 			},
 			wantErr: false, // Should return nil if systemctl not found
@@ -1708,7 +1633,7 @@ func TestConfigClient_Concurrency(t *testing.T) {
 	err := os.WriteFile(path, []byte(config), 0o644)
 	require.NoError(t, err)
 
-	client := NewConfigClient(path, nil)
+	client := NewConfigClient(path)
 
 	done := make(chan bool, 10)
 	for i := 0; i < 10; i++ {
@@ -1737,7 +1662,7 @@ func TestConfigClient_BackupFile(t *testing.T) {
 	err := os.WriteFile(path, []byte(config), 0o644)
 	require.NoError(t, err)
 
-	client := NewConfigClient(path, nil)
+	client := NewConfigClient(path)
 	inbound := models.Inbound{
 		Type: "vless",
 		Tag:  "in-1",
@@ -1808,7 +1733,7 @@ func TestConfigClient_loadRootConfig(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			path := tt.setup(t)
-			client := NewConfigClient(path, nil)
+			client := NewConfigClient(path)
 			root, err := client.loadRootConfig()
 
 			if tt.wantErr {
@@ -1833,7 +1758,7 @@ func TestConfigClient_saveAndReload_RollbackFailure(t *testing.T) {
 	config := `{"inbounds": []}`
 	require.NoError(t, os.WriteFile(path, []byte(config), 0o644))
 
-	client := NewConfigClient(path, nil)
+	client := NewConfigClient(path)
 	root := map[string]interface{}{
 		"inbounds": []interface{}{
 			map[string]interface{}{"tag": "in-1"},
@@ -1851,7 +1776,7 @@ func TestConfigClient_saveAndReload_RollbackFailure(t *testing.T) {
 }
 
 func TestConfigClient_reloadSystemService_ContextCanceled(t *testing.T) {
-	client := NewConfigClient("/tmp/config.json", nil)
+	client := NewConfigClient("/tmp/config.json")
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // Cancel immediately
@@ -1862,7 +1787,7 @@ func TestConfigClient_reloadSystemService_ContextCanceled(t *testing.T) {
 }
 
 func TestConfigClient_reloadSystemService_RateLimit(t *testing.T) {
-	client := NewConfigClient("/tmp/config.json", nil)
+	client := NewConfigClient("/tmp/config.json")
 
 	// First call
 	// First call
@@ -1895,7 +1820,7 @@ func TestConfigClient_UpdateUser_NonMapUserEntry(t *testing.T) {
 	}`
 	require.NoError(t, os.WriteFile(path, []byte(config), 0o644))
 
-	client := NewConfigClient(path, nil)
+	client := NewConfigClient(path)
 	user := models.User{
 		InboundTag: "in-1",
 		SubID:      "user2",
@@ -1929,7 +1854,7 @@ func TestConfigClient_GetUsers_NonMapUserEntry(t *testing.T) {
 	}`
 	require.NoError(t, os.WriteFile(path, []byte(config), 0o644))
 
-	client := NewConfigClient(path, nil)
+	client := NewConfigClient(path)
 	users, err := client.GetUsers(context.Background())
 	require.NoError(t, err)
 	assert.Len(t, users, 1) // Only the valid user
@@ -2084,4 +2009,65 @@ func TestSyncStatsUsers(t *testing.T) {
 	syncStatsUsers(root2)
 	_, ok = root2["experimental"]
 	assert.False(t, ok)
+}
+
+// TestBuildProtocolUser_EmailAndEnabled verifies that buildProtocolUser keeps
+// email/enabled in sync with the ConfigManager (sync) path: user email is
+// written, existing email is preserved on update when the request has none,
+// and enabled is always written.
+func TestBuildProtocolUser_EmailAndEnabled(t *testing.T) {
+	tests := []struct {
+		name        string
+		inboundType string
+		user        models.User
+		existing    map[string]interface{}
+		wantEmail   interface{}
+		wantEnabled bool
+	}{
+		{
+			name:        "vless with email",
+			inboundType: "vless",
+			user:        models.User{SubID: "user1", UUID: "uuid1", Email: "user@example.com", Enabled: true},
+			wantEmail:   "user@example.com",
+			wantEnabled: true,
+		},
+		{
+			name:        "vless preserves existing email on empty",
+			inboundType: "vless",
+			user:        models.User{SubID: "user1", UUID: "uuid1", Enabled: false},
+			existing:    map[string]interface{}{"email": "old@example.com", "uuid": "uuid1"},
+			wantEmail:   "old@example.com",
+			wantEnabled: false,
+		},
+		{
+			name:        "hysteria2 with email",
+			inboundType: "hysteria2",
+			user:        models.User{SubID: "user1", UUID: "pass", Email: "user@example.com", Enabled: true},
+			wantEmail:   "user@example.com",
+			wantEnabled: true,
+		},
+		{
+			name:        "hysteria2 preserves existing email on empty",
+			inboundType: "hysteria2",
+			user:        models.User{SubID: "user1", UUID: "pass", Enabled: false},
+			existing:    map[string]interface{}{"email": "old@example.com", "password": "pass"},
+			wantEmail:   "old@example.com",
+			wantEnabled: false,
+		},
+		{
+			name:        "vless without any email",
+			inboundType: "vless",
+			user:        models.User{SubID: "user1", UUID: "uuid1", Enabled: true},
+			wantEmail:   nil,
+			wantEnabled: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := buildProtocolUser(tt.inboundType, tt.user, tt.existing)
+			assert.Equal(t, tt.wantEmail, result["email"])
+			assert.Equal(t, tt.wantEnabled, result["enabled"])
+		})
+	}
 }

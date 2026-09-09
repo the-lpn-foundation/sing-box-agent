@@ -21,7 +21,6 @@ import (
 	"github.com/oglenyaboss/sing-box-agent/internal/handlers"
 	"github.com/oglenyaboss/sing-box-agent/internal/middleware"
 	"github.com/oglenyaboss/sing-box-agent/internal/models"
-	syncpkg "github.com/oglenyaboss/sing-box-agent/internal/sync"
 )
 
 type MockSingBoxConfigE2E struct {
@@ -178,8 +177,7 @@ func setupConfigE2EServer(t *testing.T) *httptest.Server {
 		},
 	}
 
-	syncEngine := syncpkg.NewEngine(mockSingBox)
-	inboundHandler := handlers.NewInboundHandler(syncEngine, mockSingBox, logger)
+	inboundHandler := handlers.NewInboundHandler(mockSingBox, logger)
 
 	mockCore := &MockCoreServiceE2E{
 		config: make(map[string]interface{}),

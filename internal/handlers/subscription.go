@@ -21,6 +21,12 @@ const (
 	SubscriptionFormatSingBox = "sing-box"
 
 	CodeSubscriptionNotFound = "USER_NOT_FOUND"
+
+	// maxSubscriptionCacheEntries bounds the in-memory subscription cache so
+	// that unbounded unique subIDs cannot grow it forever. Records beyond the
+	// cap are simply not cached; GetSubscription regenerates them from live
+	// sing-box state.
+	maxSubscriptionCacheEntries = 1000
 )
 
 type SubscriptionRequest struct {
@@ -88,9 +94,7 @@ func (h *SubscriptionHandler) GenerateSubscription(w http.ResponseWriter, r *htt
 		}
 
 		record := SubscriptionRecord{SubID: req.SubID, InboundTag: req.InboundTag, Format: format, Config: config}
-		h.mu.Lock()
-		h.store[req.SubID] = record
-		h.mu.Unlock()
+		h.cacheRecord(record)
 		h.sendSuccess(w, http.StatusOK, record)
 		return
 	}
@@ -112,9 +116,7 @@ func (h *SubscriptionHandler) GenerateSubscription(w http.ResponseWriter, r *htt
 		}
 
 		record := SubscriptionRecord{SubID: req.SubID, InboundTag: req.InboundTag, Format: format, Config: config}
-		h.mu.Lock()
-		h.store[req.SubID] = record
-		h.mu.Unlock()
+		h.cacheRecord(record)
 		h.sendSuccess(w, http.StatusOK, record)
 		return
 	}
@@ -144,11 +146,21 @@ func (h *SubscriptionHandler) GenerateSubscription(w http.ResponseWriter, r *htt
 		Config:     config,
 	}
 
-	h.mu.Lock()
-	h.store[req.SubID] = record
-	h.mu.Unlock()
+	h.cacheRecord(record)
 
 	h.sendSuccess(w, http.StatusOK, record)
+}
+
+// cacheRecord stores a subscription record in the in-memory cache unless the
+// cache is at capacity, in which case the record is skipped (the response to
+// the client is unaffected and GetSubscription regenerates on demand).
+func (h *SubscriptionHandler) cacheRecord(record SubscriptionRecord) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if len(h.store) >= maxSubscriptionCacheEntries {
+		return
+	}
+	h.store[record.SubID] = record
 }
 
 func (h *SubscriptionHandler) GetSubscription(w http.ResponseWriter, r *http.Request) {
@@ -196,9 +208,7 @@ func (h *SubscriptionHandler) GetSubscription(w http.ResponseWriter, r *http.Req
 		Config:     config,
 	}
 
-	h.mu.Lock()
-	h.store[subID] = record
-	h.mu.Unlock()
+	h.cacheRecord(record)
 
 	h.sendSuccess(w, http.StatusOK, record)
 }

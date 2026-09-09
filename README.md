@@ -62,8 +62,7 @@ sing-box state or driven from outside.
 - sing-box ≥ 1.12 installed on the host.
 - Linux with `systemd` (default reload strategy) **or** any host where
   you can signal a PID / run a reload command.
-- Go ≥ 1.24 if building from source. See note on binary distribution in
-  [License](#license).
+- Go ≥ 1.24 if building from source.
 
 ## Quick start — standalone
 
@@ -71,8 +70,8 @@ This is the simplest possible setup: one agent, one sing-box, no control
 plane. You manage users and inbounds with `curl`.
 
 ```bash
-# 1. Build the agent (sing-box is linked in as a Go library; a sing-box
-#    runtime binary must still be installed separately on the host).
+# 1. Build the agent (it does not link sing-box; a sing-box runtime
+#    binary must still be installed separately on the host).
 git clone https://github.com/oglenyaboss/sing-box-agent
 cd sing-box-agent
 make build
@@ -86,7 +85,7 @@ sed -i "s/CHANGE-ME-HMAC-SECRET-KEY/$(openssl rand -hex 32)/" agent-config.yaml
 ./sing-box-agent -config ./agent-config.yaml &
 
 # 4. Smoke test.
-curl http://localhost:8080/healthz       # -> {"status":"healthy"}
+curl http://localhost:8080/healthz       # -> OK
 ```
 
 From here, `curl` + the HMAC headers described in
@@ -114,10 +113,13 @@ docker run --rm -p 8080:8080 -p 9090:9090 \
 See [`deploy/docker/docker-compose.yml`](./deploy/docker/docker-compose.yml)
 for a reproducible local stack.
 
-**Note:** the image produced by the Dockerfile embeds sing-box, which is
-GPLv3. Building and running it for your own use is fine; publishing it
-to a public registry would require GPL-compliant redistribution. See the
-header of [`Dockerfile`](./Dockerfile) for details.
+**Note:** the image produced by the Dockerfile contains two separate programs:
+the MIT-licensed agent and a sing-box executable, which is GPLv3. The two
+are not linked — the image merely bundles them side by side. Building and
+running it for your own use is fine; if you redistribute the image, you must
+comply with GPLv3 for the bundled sing-box binary (its sources are public).
+The agent itself stays MIT. See the header of [`Dockerfile`](./Dockerfile)
+for details.
 
 ## Quick start — systemd
 
@@ -156,13 +158,16 @@ by an environment variable.
 | Field                 | Env var                             | Default                        | Required | Notes                                      |
 |-----------------------|-------------------------------------|--------------------------------|----------|--------------------------------------------|
 | `api_port`            | `SINGBOX_AGENT_API_PORT`            | `8080`                         | no       | REST API port                              |
-| `metrics_port`        | `SINGBOX_AGENT_METRICS_PORT`        | `9090`                         | no       | Prometheus `/metrics`                      |
+| `metrics_port`        | `SINGBOX_AGENT_METRICS_PORT`        | `9090`                         | no       | dedicated Prometheus listener (`/metrics` also stays on the API port) |
+| `metrics_username`    | `SINGBOX_AGENT_METRICS_USERNAME`    | — (auth off)                   | no       | Basic-auth user for `/metrics` (both endpoints); auth active when both set |
+| `metrics_password`    | `SINGBOX_AGENT_METRICS_PASSWORD`    | — (auth off)                   | no       | Basic-auth password for `/metrics`                                      |
 | `token`               | `SINGBOX_AGENT_TOKEN`               | —                              | **yes**  | Bearer token, ≥ 32 chars                   |
 | `secret`              | `SINGBOX_AGENT_SECRET`              | —                              | **yes**  | HMAC signing secret                        |
 | `singbox_config_path` | `SINGBOX_AGENT_SINGBOX_CONFIG_PATH` | `/etc/sing-box/config.json`    | no       | Path to the sing-box config file           |
-| `log_level`           | `SINGBOX_AGENT_LOG_LEVEL`           | `info`                         | no       | `debug` \| `info` \| `warn` \| `error`     |
-| `reload.strategy`     | `SINGBOX_AGENT_RELOAD_STRATEGY`     | `systemctl`                    | no       | `systemctl` \| `signal` \| `command`       |
-| `reload.target`       | `SINGBOX_AGENT_RELOAD_TARGET`       | `sing-box`                     | no       | service name, PID file, or executable      |
+| `stats_api_address`   | `SINGBOX_AGENT_STATS_API_ADDRESS`   | `127.0.0.1:9091`               | no       | v2ray_api address for traffic statistics   |
+| `reload_strategy`     | `SINGBOX_AGENT_RELOAD_STRATEGY`     | `systemctl`                    | no       | `systemctl` \| `signal` \| `command`       |
+| `reload_target`       | `SINGBOX_AGENT_RELOAD_TARGET`       | `sing-box`                     | no       | service name, PID file, or executable      |
+| `reload_command`      | `SINGBOX_AGENT_RELOAD_COMMAND`      | —                              | no       | shell command when strategy is `command`   |
 | `tls_cert_path`       | `SINGBOX_AGENT_TLS_CERT_PATH`       | —                              | no       | enables TLS when paired with key           |
 | `tls_key_path`        | `SINGBOX_AGENT_TLS_KEY_PATH`        | —                              | no       | enables TLS when paired with cert          |
 | `fastify_base_url`    | `SINGBOX_AGENT_FASTIFY_URL`         | —                              | no       | optional central control-plane URL         |
@@ -186,7 +191,8 @@ X-Nonce:       <random unique nonce>
 ```
 
 The canonical string is `{nonce}\n{timestamp}\n{METHOD}\n{path}\n{sha256(body)}`.
-
+Note that only the path is signed — the query string is **not** covered by
+the signature.
 | Endpoint group          | Purpose                               |
 |-------------------------|---------------------------------------|
 | `GET /healthz`          | liveness probe                        |
@@ -196,7 +202,7 @@ The canonical string is `{nonce}\n{timestamp}\n{METHOD}\n{path}\n{sha256(body)}`
 | `*   /inbounds[/…]`     | inbound CRUD                          |
 | `*   /inbounds/{tag}/users[/…]` | user CRUD (idempotent creates) |
 | `GET /stats/traffic`    | per-inbound cumulative counters       |
-| `GET /stats/online`     | currently-connected users             |
+| `GET /stats/online`     | currently-connected users (**always returns an empty list** — online detection is not implemented yet; requires the sing-box clash api) |
 | `POST /sync/desired-state` | push a full desired state          |
 | `GET /sync/status`      | last applied version / timestamp      |
 | `POST /subscription/generate` | produce a client config URL     |
@@ -226,13 +232,16 @@ See [SECURITY.md](./SECURITY.md) for the disclosure policy and
 operator-hardening recommendations.
 
 ## License
-
 Released under the [MIT License](./LICENSE).
 
-**A note on binary distribution:** sing-box itself is GPLv3. This agent
-imports sing-box as a Go library, so any *compiled* binary is a GPLv3
-derived work. We therefore intentionally do **not** publish pre-built
-binaries or Docker images from this repository — building from source
-for your own use ("mere use") is unrestricted under GPLv3, but
-redistribution of compiled artifacts is your responsibility under the
-GPL. The MIT license applies to the source only.
+The agent does **not** import sing-box as a Go library and never links
+against it: the compiled agent binary is pure MIT. sing-box itself is
+GPLv3-licensed and is managed by the agent as a separate process
+(systemd, signal, or a custom reload command).
+
+The Docker image is a special case: it bundles a separately built
+sing-box executable (GPLv3) next to the MIT-licensed agent. This is
+aggregation, not linking — the agent remains MIT. If you redistribute
+the image, you only need to comply with GPLv3 for the bundled sing-box
+binary, whose sources are publicly available. Running the image for
+your own use is unrestricted.

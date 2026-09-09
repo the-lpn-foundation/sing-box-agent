@@ -4,7 +4,7 @@ This document provides technical details for implementing a client to communicat
 
 ## 1. Overview
 - `sing-box-agent` is a Go service deployed on each VPN server.
-- It embeds `sing-box` as a library and exposes a REST API for management.
+- It manages a local `sing-box` instance as a separate process (systemd unit / signal / custom reload command) and exposes a REST API for management.
 - Architecture: **central control plane → sing-box-agent (one per server) → sing-box core**. (A Fastify-based reference implementation of the control plane is assumed throughout this guide, but any HTTP service implementing the contract will work.)
 - The agent is stateless — the central API is the source of truth for the desired state.
 - One agent manages exactly one server (no multi-tenancy).
@@ -27,6 +27,7 @@ Every request must include the following headers:
 2. Construct the `canonical_string`: `"{nonce}\n{timestamp}\n{METHOD}\n{path}\n{body_hash}"`.
 3. Compute the `signature`: `HMAC-SHA256(canonical_string, secret).hexdigest()`.
    - The `secret` is configured via `SINGBOX_AGENT_SECRET`.
+   - **Only the path is signed.** The query string is NOT covered by the signature — do not rely on the signature to authenticate query parameters of GET requests.
 
 **Security constraints:**
 - **Timestamp skew**: The agent rejects requests if the timestamp differs from the server time by more than ±300 seconds.
@@ -81,12 +82,13 @@ All API responses follow a consistent format.
 - Same key + different payload: Returns `409 IDEMPOTENCY_CONFLICT`.
 - Payload matching is determined by `SHA256(method + "\n" + path + "\n" + body)`.
 - Keys are cached for 24 hours in an LRU cache (10k entries max).
+- Idempotency middleware is enabled on all mutating endpoints; requests without an `Idempotency-Key` header pass through unchanged.
 
 ## 5. API Endpoints Reference
 
 ### Health
 - **GET /healthz**: Returns basic health status.
-  - Response: `{"success": true, "data": {"status": "healthy"}}`
+  - Response: plain text `OK` (200, `Content-Type: text/plain`). Not JSON.
 - **GET /readyz**: Returns readiness status including sync state.
   - Response: `{"success": true, "data": {"ready": true, "sync_status": "synced"}}`
   - Returns `503` if the agent is not ready.
@@ -96,7 +98,7 @@ All API responses follow a consistent format.
 ### Inbounds CRUD
 - **GET /inbounds**: List all inbounds.
 - **POST /inbounds**: Create an inbound.
-  - Body: `{ "tag": "string", "type": "vless|vmess|trojan|shadowsocks|hysteria|hysteria2|tuic", "listen": "string", "listen_port": int, "tls": {}, "transport": {} }`
+  - Body: `{ "tag": "string", "type": "vless|vmess|trojan|shadowsocks|shadowtls|hysteria2|tuic", "listen": "string", "listen_port": int, "tls": {}, "transport": {} }`
   - Returns `201` on success.
 - **GET /inbounds/{tag}**: Get a specific inbound by tag.
 - **PUT /inbounds/{tag}**: Partial update of an inbound (tls, transport).
@@ -106,6 +108,7 @@ All API responses follow a consistent format.
 - **GET /inbounds/{tag}/users**: List all users for an inbound.
 - **POST /inbounds/{tag}/users**: Create a user for an inbound.
   - Body: `{ "subId": "required", "uuid": "optional", "name": "string", "email": "string", "flow": "string", "enabled": true, "limitIp": int, "uploadLimit": int, "downloadLimit": int }`
+  - **Note:** `limitIp`/`uploadLimit`/`downloadLimit` are accepted for XUI-convention compatibility and stored/echoed by the API, but are **not applied to the sing-box configuration** — sing-box has no native per-user limits. Quota enforcement is the caller's responsibility (e.g., poll `GET /stats/traffic` and disable users).
   - Returns `201` with `{ "subId": "id", "link": "vless://..." }`.
 - **GET /inbounds/{tag}/users/{subId}**: Get a specific user by subscription ID.
 - **PUT /inbounds/{tag}/users/{subId}**: Partial update of a user.
@@ -116,7 +119,8 @@ All API responses follow a consistent format.
   - Query: `?inbound=tag&start=RFC3339&end=RFC3339`
   - Response: `{ "inbounds": [{ "tag": "tag", "upload": 1024, "download": 2048 }], "counters_reset_at": "..." }`
 - **GET /stats/online**: List currently connected users.
-  - Response: `{ "count": 5, "users": [{ "subId": "id", "inboundTag": "tag", "connected_at": "...", "remote_addr": "..." }] }`
+  - **Note:** currently always returns `{ "count": 0, "users": [] }` — online-user detection is not implemented yet (it requires the sing-box clash API).
+  - Intended shape once implemented: `{ "count": 5, "users": [{ "subId": "id", "inboundTag": "tag", "connected_at": "...", "remote_addr": "..." }] }`
 
 ### Sync
 - **POST /sync/desired-state**: Push the full desired state.
@@ -227,7 +231,7 @@ info:
   title: sing-box-agent API
   version: 1.2.0
   description: |
-    A lightweight Go service that embeds sing-box as a library and provides a REST API for remote management.
+    A lightweight Go service that manages a local sing-box instance (as a separate process) and provides a REST API for remote management.
     Designed to replace 3x-ui panels and SSH-based config management while maintaining multi-server architecture.
 
     **Key Features:**
@@ -281,13 +285,10 @@ paths:
         '200':
           description: Service is healthy
           content:
-            application/json:
+            text/plain:
               schema:
-                $ref: '#/components/schemas/SuccessResponse'
-              example:
-                success: true
-                data:
-                  status: healthy
+                type: string
+              example: OK
 
   /readyz:
     get:
@@ -695,7 +696,7 @@ paths:
       tags:
         - Stats
       summary: Online users
-      description: Retrieve list of currently online users
+      description: Retrieve list of currently online users (currently always empty — online detection is not implemented; requires the sing-box clash API)
       operationId: getOnlineUsers
       responses:
         '200':
@@ -921,6 +922,8 @@ components:
         signature = HMAC-SHA256(canonical_string, secret).hexdigest()
         ```
 
+        Note: only the path is signed — the query string is NOT covered by the signature.
+
   schemas:
     SuccessResponse:
       type: object
@@ -980,7 +983,7 @@ components:
           description: Unique inbound identifier
         type:
           type: string
-          enum: [vless, vmess, trojan, shadowsocks, hysteria, hysteria2, tuic]
+          enum: [vless, vmess, trojan, shadowsocks, shadowtls, hysteria2, tuic]
           description: Protocol type
         listen:
           type: string
@@ -1012,7 +1015,7 @@ components:
           description: Unique inbound identifier
         type:
           type: string
-          enum: [vless, vmess, trojan, shadowsocks, hysteria, hysteria2, tuic]
+          enum: [vless, vmess, trojan, shadowsocks, shadowtls, hysteria2, tuic]
         listen:
           type: string
         listen_port:
@@ -1092,13 +1095,13 @@ components:
           default: true
         limitIp:
           type: integer
-          description: Max concurrent connections (0 = unlimited)
+          description: Accepted for XUI-convention compatibility; stored but NOT enforced in sing-box (no native per-user connection limits)
         uploadLimit:
           type: integer
-          description: Upload limit in bytes (0 = unlimited)
+          description: Accepted for XUI-convention compatibility; stored but NOT enforced in sing-box — quota enforcement is the caller's responsibility
         downloadLimit:
           type: integer
-          description: Download limit in bytes (0 = unlimited)
+          description: Accepted for XUI-convention compatibility; stored but NOT enforced in sing-box — quota enforcement is the caller's responsibility
 
     UserUpdate:
       type: object
@@ -1113,13 +1116,13 @@ components:
           type: boolean
         limitIp:
           type: integer
-          description: Max concurrent connections (0 = unlimited)
+          description: Accepted for XUI-convention compatibility; stored but NOT enforced in sing-box (no native per-user connection limits)
         uploadLimit:
           type: integer
-          description: Upload limit in bytes (0 = unlimited)
+          description: Accepted for XUI-convention compatibility; stored but NOT enforced in sing-box — quota enforcement is the caller's responsibility
         downloadLimit:
           type: integer
-          description: Download limit in bytes (0 = unlimited)
+          description: Accepted for XUI-convention compatibility; stored but NOT enforced in sing-box — quota enforcement is the caller's responsibility
 
     UserCreateResponse:
       type: object

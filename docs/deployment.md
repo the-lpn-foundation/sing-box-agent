@@ -50,7 +50,7 @@ docker run --rm -d \
   -e SINGBOX_AGENT_SECRET="$SECRET" \
   sing-box-agent:local
 
-curl http://127.0.0.1:8080/healthz   # {"status":"healthy"}
+curl http://127.0.0.1:8080/healthz   # OK
 ```
 
 ### Run with Compose
@@ -135,11 +135,14 @@ sudo systemctl enable --now sing-box-agent
 | YAML field            | Env var                             | Default                        |
 |-----------------------|-------------------------------------|--------------------------------|
 | `api_port`            | `SINGBOX_AGENT_API_PORT`            | `8080`                         |
-| `metrics_port`        | `SINGBOX_AGENT_METRICS_PORT`        | `9090`                         |
+| `metrics_port`        | `SINGBOX_AGENT_METRICS_PORT`        | `9090` (dedicated listener; `/metrics` also stays on the API port) |
+| `metrics_username`    | `SINGBOX_AGENT_METRICS_USERNAME`    | — (auth off; set with password) |
+| `metrics_password`    | `SINGBOX_AGENT_METRICS_PASSWORD`    | — (auth off; set with username) |
 | `token`               | `SINGBOX_AGENT_TOKEN`               | **required** (≥ 32 chars)       |
 | `secret`              | `SINGBOX_AGENT_SECRET`              | **required**                   |
 | `singbox_config_path` | `SINGBOX_AGENT_SINGBOX_CONFIG_PATH` | `/etc/sing-box/config.json`    |
 | `log_level`           | `SINGBOX_AGENT_LOG_LEVEL`           | `info`                         |
+| `stats_api_address`   | `SINGBOX_AGENT_STATS_API_ADDRESS`   | `127.0.0.1:9091`               |
 | `reload_strategy`     | `SINGBOX_AGENT_RELOAD_STRATEGY`     | `systemctl`                    |
 | `reload_target`       | `SINGBOX_AGENT_RELOAD_TARGET`       | `sing-box`                     |
 | `reload_command`      | `SINGBOX_AGENT_RELOAD_COMMAND`      | —                              |

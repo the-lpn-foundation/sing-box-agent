@@ -3,10 +3,10 @@ package auth
 import (
 	"crypto/hmac"
 	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"hash"
 	"strings"
 )
 
@@ -30,7 +30,8 @@ func ValidateBearerToken(providedToken, expectedToken string) error {
 	if providedToken == "" {
 		return ErrMissingAuthHeader
 	}
-	if providedToken != expectedToken {
+	// Constant-time comparison to prevent timing attacks on the token.
+	if subtle.ConstantTimeCompare([]byte(providedToken), []byte(expectedToken)) != 1 {
 		return ErrInvalidToken
 	}
 	return nil
@@ -104,26 +105,4 @@ func SignRequest(canonicalString, secret string) string {
 	mac := hmac.New(sha256.New, []byte(secret))
 	_, _ = mac.Write([]byte(canonicalString))
 	return hex.EncodeToString(mac.Sum(nil))
-}
-
-// Hasher is an interface for hash computation, allowing for testability.
-type Hasher interface {
-	Write([]byte) (int, error)
-	Sum([]byte) []byte
-	Reset()
-	Size() int
-	BlockSize() int
-}
-
-// NewHasher creates a new SHA256 hash.
-// This is a convenience function for creating hashers in tests.
-func NewHasher() hash.Hash {
-	return sha256.New()
-}
-
-// ComputeHash computes the hash of the data using the provided hasher.
-func ComputeHash(h Hasher, data []byte) []byte {
-	h.Reset()
-	_, _ = h.Write(data)
-	return h.Sum(nil)
 }

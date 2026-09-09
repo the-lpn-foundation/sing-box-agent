@@ -1,6 +1,5 @@
-PHONY := help lint test build security release version tools-install
+PHONY := help lint test build test-race test-coverage security release version tools-install
 .PHONY: $(PHONY)
-
 GOLANGCI_LINT_VERSION := v1.64.5
 STATICCHECK_VERSION := 2025.1.1
 GOFUMPT_VERSION := v0.7.0
@@ -17,11 +16,10 @@ BUILD_LDFLAGS=-s -w -buildid= -X main.Version=$(VERSION) -X main.BuildTime=$(BUI
 help:
 	@echo "Available targets:"
 	@echo "  help      - Show this help"
-	@echo "  lint      - Run golangci-lint (placeholder)"
+	@echo "  lint      - Run full linting pipeline (gofumpt, go vet, staticcheck, golangci-lint)"
 	@echo "  test      - Run go test ./..."
 	@echo "  test-race - Run go test with race detector"
 	@echo "  test-coverage - Run tests with coverage threshold (>=70%)"
-	@echo "  test-fuzz - Run fuzz tests (placeholder)"
 	@echo "  build     - Build all packages (deterministic flags)"
 	@echo "  version   - Print build version metadata"
 	@echo "  security  - Run security checks (govulncheck)"
@@ -79,11 +77,6 @@ test-coverage: ## Run tests with coverage threshold (>=70%)
 	@echo "Running tests with coverage..."
 	go test -coverprofile=coverage.out ./...
 	@go tool cover -func=coverage.out | grep total | awk '{if ($$3+0 < 70) {print "Coverage below 70%: " $$3; exit 1}}'
-
-test-fuzz: ## Run fuzz tests
-	@echo "Running fuzz tests..."
-	@echo "Fuzz targets: test/fuzz/"
-	@go test -fuzz=Fuzz -fuzztime=30s ./test/fuzz/... || echo "No fuzz tests found or fuzz tests passed"
 
 build:
 	@echo "Building sing-box-agent..."

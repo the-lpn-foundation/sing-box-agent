@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -1535,4 +1536,36 @@ func TestBuildSingBoxSubscriptionConfig_WithAllOptions(t *testing.T) {
 	assert.Contains(t, config, "\"insecure\": true")
 	assert.Contains(t, config, "\"path\": \"/path\"")
 	// Note: limit_ip, upload_limit, download_limit are not included in the generated config by the current implementation
+}
+
+// TestSubscriptionCache_CappedAtMaxEntries verifies that the in-memory
+// subscription cache never grows beyond maxSubscriptionCacheEntries: records
+// generated after the cap is reached are simply not cached, while responses
+// to the client remain identical.
+func TestSubscriptionCache_CappedAtMaxEntries(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	handler := NewSubscriptionHandler(logger) // no client: legacy path always caches
+
+	total := maxSubscriptionCacheEntries + 50
+	for i := 0; i < total; i++ {
+		req := SubscriptionRequest{
+			SubID:  fmt.Sprintf("sub-%d", i),
+			Format: SubscriptionFormatV2Ray,
+			Server: "example.com",
+			Port:   443,
+		}
+		body, err := json.Marshal(req)
+		require.NoError(t, err)
+
+		httpReq := httptest.NewRequest(http.MethodPost, "/subscription", bytes.NewReader(body))
+		w := httptest.NewRecorder()
+		handler.GenerateSubscription(w, httpReq)
+		require.Equal(t, http.StatusOK, w.Code, "response must be unaffected for sub-%d", i)
+	}
+
+	handler.mu.RLock()
+	size := len(handler.store)
+	handler.mu.RUnlock()
+	assert.Equal(t, maxSubscriptionCacheEntries, size,
+		"cache must not grow beyond maxSubscriptionCacheEntries")
 }

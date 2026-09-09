@@ -4,9 +4,6 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PRE_COMMIT_CONFIG="$ROOT_DIR/.pre-commit-config.yaml"
 PRE_COMMIT_HOOK="$ROOT_DIR/.git/hooks/pre-commit"
-COMMAND_GUARD="$ROOT_DIR/.hooks/command-guard.sh"
-DENY_LIST="$ROOT_DIR/.hooks/deny-list.txt"
-ALLOW_ONCE_TOKEN="I_ACKNOWLEDGE_DESTRUCTIVE_COMMAND_RISK"
 
 failures=0
 
@@ -45,30 +42,6 @@ if [[ -x "$PRE_COMMIT_HOOK" ]]; then
   check "pre_commit_hook" ".git/hooks/pre-commit exists and is executable" 0
 else
   check "pre_commit_hook" "pre-commit hook is not installed; remediation: pre-commit install" 1
-fi
-
-if [[ -x "$COMMAND_GUARD" ]]; then
-  check "command_guard_script" "command guard exists and is executable" 0
-else
-  check "command_guard_script" "command guard missing or not executable; remediation: chmod +x .hooks/command-guard.sh" 1
-fi
-
-if [[ -s "$DENY_LIST" ]]; then
-  check "command_guard_deny_list" "deny-list exists and is non-empty" 0
-else
-  check "command_guard_deny_list" "deny-list missing or empty; remediation: populate .hooks/deny-list.txt" 1
-fi
-
-if "$COMMAND_GUARD" "rm -rf /tmp/guard-test" >/dev/null 2>&1; then
-  check "guard_block_test" "deny-list command unexpectedly allowed" 1
-else
-  check "guard_block_test" "deny-list command is blocked by default" 0
-fi
-
-if COMMAND_GUARD_ALLOW_ONCE="$ALLOW_ONCE_TOKEN" "$COMMAND_GUARD" "rm -rf /tmp/guard-test" >/dev/null 2>&1; then
-  check "guard_allow_once_test" "allow-once acknowledgment works" 0
-else
-  check "guard_allow_once_test" "allow-once acknowledgment failed" 1
 fi
 
 if [[ "$failures" -eq 0 ]]; then

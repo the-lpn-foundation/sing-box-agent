@@ -5,17 +5,15 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/sagernet/sing-box/experimental/v2rayapi"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+
+	v2rayapi "github.com/oglenyaboss/sing-box-agent/internal/v2rayapi"
 )
 
 // statsServiceFullMethod is the QueryStats method path of the sing-box
-// v2ray_api service. Note: the package-level init() in
-// experimental/v2rayapi rewrites StatsService_ServiceDesc.ServiceName to
-// "v2ray.core.app.stats.command.StatsService" while the generated client
-// constants still point at "experimental.v2rayapi.StatsService", so the
-// generated client cannot reach the real server. Dial the canonical path.
+// v2ray_api service. sing-box registers that server under the v2ray
+// canonical service name, not under its own Go package name.
 const statsServiceFullMethod = "/v2ray.core.app.stats.command.StatsService/QueryStats"
 
 // V2RayStatsClient queries per-inbound traffic counters from the sing-box
@@ -26,7 +24,10 @@ type V2RayStatsClient struct {
 
 // NewV2RayStatsClient dials the sing-box v2ray_api listener.
 func NewV2RayStatsClient(address string) (*V2RayStatsClient, error) {
-	conn, err := grpc.NewClient(address, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.NewClient(address,
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithDefaultCallOptions(grpc.ForceCodec(v2rayapi.Codec{})),
+	)
 	if err != nil {
 		return nil, fmt.Errorf("dial v2ray stats api %s: %w", address, err)
 	}

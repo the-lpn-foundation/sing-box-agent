@@ -87,18 +87,19 @@ func (l *Lifecycle) fetchAndApplyDesiredState(ctx context.Context) {
 		return
 	}
 
-	if plan.StepsCount() > 0 {
-		if err := l.syncEngine.Apply(ctx, plan, desired.Version); err != nil {
-			l.logger.Error("failed to apply desired state", slog.Any("error", err))
-			return
-		}
-		l.logger.Info("initial desired state applied",
-			slog.Int("version", desired.Version),
-			slog.Int("changes", plan.StepsCount()),
-		)
-	} else {
+	// Apply always runs: an empty plan is a no-op apply that still finalizes
+	// the sync status (without it the engine would stay in "syncing" forever).
+	if plan.StepsCount() == 0 {
 		l.logger.Info("no changes needed from desired state", slog.Int("version", desired.Version))
 	}
+	if err := l.syncEngine.Apply(ctx, plan, desired.Version); err != nil {
+		l.logger.Error("failed to apply desired state", slog.Any("error", err))
+		return
+	}
+	l.logger.Info("initial desired state applied",
+		slog.Int("version", desired.Version),
+		slog.Int("changes", plan.StepsCount()),
+	)
 
 	// Report success status
 	l.reportStatus(ctx, "synced", desired.Version, "initial sync completed")

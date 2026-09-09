@@ -111,7 +111,7 @@ func TestReadyzHandler(t *testing.T) {
 			req := httptest.NewRequest(tt.method, "/readyz", nil)
 			w := httptest.NewRecorder()
 
-			ReadyzHandler(nil, nil, nil)(w, req)
+			ReadyzHandler(nil, nil)(w, req)
 
 			resp := w.Result()
 			defer func() { _ = resp.Body.Close() }()

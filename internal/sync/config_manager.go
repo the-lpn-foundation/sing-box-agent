@@ -8,29 +8,27 @@ import (
 	"sync"
 	"time"
 
+	"github.com/oglenyaboss/sing-box-agent/internal/cfglock"
 	"github.com/oglenyaboss/sing-box-agent/internal/models"
-	"github.com/oglenyaboss/sing-box-agent/internal/singbox"
 )
 
 type ConfigManager struct {
 	configPath string
-	singbox    singbox.SingBox
 	reloader   Reloader
 	mu         sync.RWMutex
 }
 
 // NewConfigManager creates a config manager that reloads sing-box through the
-// provided SingBox interface. If sb is nil, Reload() returns an error until
+// provided Reloader. If r is nil, Reload() returns an error until
 // a reloader is injected via WithReloader.
-func NewConfigManager(configPath string, sb singbox.SingBox) *ConfigManager {
-	return &ConfigManager{configPath: configPath, singbox: sb}
+func NewConfigManager(configPath string, r Reloader) *ConfigManager {
+	return &ConfigManager{configPath: configPath, reloader: r}
 }
 
 // NewConfigManagerWithReloader creates a config manager that delegates
 // Reload() to the supplied Reloader (systemctl/signal/command/etc.).
-// The sb argument may be nil in this mode.
-func NewConfigManagerWithReloader(configPath string, sb singbox.SingBox, r Reloader) *ConfigManager {
-	return &ConfigManager{configPath: configPath, singbox: sb, reloader: r}
+func NewConfigManagerWithReloader(configPath string, r Reloader) *ConfigManager {
+	return &ConfigManager{configPath: configPath, reloader: r}
 }
 
 // WithReloader swaps the reloader at runtime (primarily for tests).
@@ -44,6 +42,11 @@ func (m *ConfigManager) WithReloader(r Reloader) *ConfigManager {
 func (m *ConfigManager) AddUser(inboundTag string, user models.User) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+
+	// Serialise the load-modify-save cycle against the other config writer
+	// (ConfigClient) to prevent lost updates on the shared file.
+	cfglock.For(m.configPath).Lock()
+	defer cfglock.For(m.configPath).Unlock()
 
 	cfg, err := m.loadConfigMap()
 	if err != nil {
@@ -84,6 +87,9 @@ func (m *ConfigManager) AddUser(inboundTag string, user models.User) error {
 func (m *ConfigManager) UpdateUser(inboundTag string, user models.User) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+
+	cfglock.For(m.configPath).Lock()
+	defer cfglock.For(m.configPath).Unlock()
 
 	cfg, err := m.loadConfigMap()
 	if err != nil {
@@ -131,6 +137,9 @@ func (m *ConfigManager) DeleteUser(inboundTag, subID string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
+	cfglock.For(m.configPath).Lock()
+	defer cfglock.For(m.configPath).Unlock()
+
 	cfg, err := m.loadConfigMap()
 	if err != nil {
 		return err
@@ -174,6 +183,9 @@ func (m *ConfigManager) AddInbound(inbound models.Inbound) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
+	cfglock.For(m.configPath).Lock()
+	defer cfglock.For(m.configPath).Unlock()
+
 	cfg, err := m.loadConfigMap()
 	if err != nil {
 		return err
@@ -207,6 +219,9 @@ func (m *ConfigManager) AddInbound(inbound models.Inbound) error {
 func (m *ConfigManager) UpdateInbound(inbound models.Inbound) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+
+	cfglock.For(m.configPath).Lock()
+	defer cfglock.For(m.configPath).Unlock()
 
 	cfg, err := m.loadConfigMap()
 	if err != nil {
@@ -250,6 +265,9 @@ func (m *ConfigManager) DeleteInbound(tag string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
+	cfglock.For(m.configPath).Lock()
+	defer cfglock.For(m.configPath).Unlock()
+
 	cfg, err := m.loadConfigMap()
 	if err != nil {
 		return err
@@ -287,23 +305,15 @@ func (m *ConfigManager) DeleteInbound(tag string) error {
 func (m *ConfigManager) Reload(ctx context.Context) error {
 	m.mu.RLock()
 	reloader := m.reloader
-	sb := m.singbox
 	m.mu.RUnlock()
 
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
-	if reloader != nil {
-		return reloader.Reload(ctx)
-	}
-
-	if sb == nil {
+	if reloader == nil {
 		return fmt.Errorf("sing-box client is not configured")
 	}
-	if err := sb.Reload(ctx, nil); err != nil {
-		return fmt.Errorf("reload sing-box: %w", err)
-	}
-	return nil
+	return reloader.Reload(ctx)
 }
 
 func (m *ConfigManager) loadConfigMap() (map[string]interface{}, error) {

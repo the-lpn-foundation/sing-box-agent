@@ -547,34 +547,6 @@ func TestLoadFromEnv_NoEnvVars(t *testing.T) {
 	assert.Equal(t, "info", cfg.LogLevel)
 }
 
-func TestGetEnv(t *testing.T) {
-	t.Setenv("TEST_VAR", "test-value")
-
-	assert.Equal(t, "test-value", GetEnv("TEST_VAR", "default"), "Should return env var value")
-	assert.Equal(t, "default", GetEnv("NONEXISTENT_VAR", "default"), "Should return default when env var not set")
-}
-
-func TestGetEnvInt(t *testing.T) {
-	t.Setenv("TEST_INT_VAR", "12345")
-
-	assert.Equal(t, 12345, GetEnvInt("TEST_INT_VAR", 0), "Should return int value")
-	assert.Equal(t, 999, GetEnvInt("NONEXISTENT_INT_VAR", 999), "Should return default when env var not set")
-	assert.Equal(t, 555, GetEnvInt("INVALID_INT_VAR", 555), "Should return default when env var is invalid")
-}
-
-func TestGetEnvBool(t *testing.T) {
-	t.Setenv("TEST_BOOL_TRUE", "true")
-	t.Setenv("TEST_BOOL_FALSE", "false")
-	t.Setenv("TEST_BOOL_UPPERCASE", "TRUE")
-	t.Setenv("TEST_BOOL_OTHER", "yes")
-
-	assert.True(t, GetEnvBool("TEST_BOOL_TRUE"), "Should return true for 'true'")
-	assert.False(t, GetEnvBool("TEST_BOOL_FALSE"), "Should return false for 'false'")
-	assert.True(t, GetEnvBool("TEST_BOOL_UPPERCASE"), "Should be case-insensitive")
-	assert.False(t, GetEnvBool("TEST_BOOL_OTHER"), "Should return false for non-true values")
-	assert.False(t, GetEnvBool("NONEXISTENT_BOOL_VAR"), "Should return false when env var not set")
-}
-
 func TestLoad_YAMLPrecedenceOverDefaults(t *testing.T) {
 	tmpDir := t.TempDir()
 	configPath := filepath.Join(tmpDir, "config.yaml")

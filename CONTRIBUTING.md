@@ -90,7 +90,7 @@ green CI run.
 - New logic needs unit tests alongside the package (`*_test.go`).
 - End-to-end behaviour lives in `test/e2e/` and uses `httptest` servers;
   they should skip automatically when the `:8080` agent is reachable.
-- Mocks follow the pattern in [`internal/testutil/`](./internal/testutil).
+- Each test package defines its own local mocks implementing the `sync.SingBoxClient` interface (see `internal/sync/engine.go`).
 
 Run a single package:
 

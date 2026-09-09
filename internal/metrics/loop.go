@@ -22,11 +22,14 @@ func RunStatsLoop(
 	logger *slog.Logger,
 	statsAPIAddress string,
 	configClient *singbox.ConfigClient,
+	version string,
 ) error {
 	collector, err := NewCollector(prometheus.DefaultRegisterer)
 	if err != nil {
 		return err
 	}
+	// singBoxVersion is not known here (no stats API for it), so it stays empty.
+	collector.SetAgentInfo(version, "")
 
 	statsClient, err := singbox.NewV2RayStatsClient(statsAPIAddress)
 	if err != nil {

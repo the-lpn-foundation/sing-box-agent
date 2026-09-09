@@ -12,7 +12,15 @@ import (
 // sing-box experimental v2ray_api; otherwise placeholder zero stats are returned.
 type StatsProviderAdapter struct {
 	configClient *ConfigClient
-	statsClient  *V2RayStatsClient
+	statsClient  trafficQuerier
+}
+
+// trafficQuerier abstracts the v2ray_api stats queries so tests can inject a
+// fake client and so unavailable stats can degrade to zero counters instead
+// of failing the whole endpoint.
+type trafficQuerier interface {
+	InboundTraffic(ctx context.Context, tag string) (up, down uint64, err error)
+	UserTrafficBatch(ctx context.Context, names []string) (map[string][2]uint64, error)
 }
 
 // NewStatsProviderAdapter creates a new StatsProviderAdapter.
@@ -49,7 +57,9 @@ func (a *StatsProviderAdapter) GetTrafficStats(ctx context.Context, inbound stri
 		if a.statsClient != nil {
 			up, down, err := a.statsClient.InboundTraffic(ctx, ib.Tag)
 			if err != nil {
-				return nil, err
+				// v2ray_api unavailable for this inbound: degrade to zero counters
+				// (project philosophy) instead of failing the whole endpoint.
+				up, down = 0, 0
 			}
 			stat.UpBytes = up
 			stat.DownBytes = down
@@ -81,9 +91,11 @@ func (a *StatsProviderAdapter) GetUserTrafficStats(ctx context.Context) ([]model
 		}
 	}
 
-	counters, err := a.statsClient.UserTrafficBatch(ctx, names)
-	if err != nil {
-		return nil, err
+	// If the stats client is unavailable, degrade to zero counters for all users
+	// (project philosophy) instead of failing the endpoint.
+	counters, batchErr := a.statsClient.UserTrafficBatch(ctx, names)
+	if batchErr != nil {
+		counters = nil
 	}
 
 	result := make([]models.TrafficUserStat, 0, len(users))

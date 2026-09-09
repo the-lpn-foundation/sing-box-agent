@@ -1,11 +1,13 @@
 package singbox
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
@@ -13,6 +15,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/oglenyaboss/sing-box-agent/internal/cfglock"
 	"github.com/oglenyaboss/sing-box-agent/internal/models"
 )
 
@@ -31,7 +34,6 @@ const reloadDebounceInterval = 3 * time.Second
 
 type ConfigClient struct {
 	configPath string
-	wrapper    *Wrapper
 	mu         sync.RWMutex
 	lastReload time.Time
 
@@ -49,12 +51,12 @@ type ConfigClient struct {
 	debounceMu       sync.Mutex
 	debounceTimer    *time.Timer
 	debounceOriginal []byte // config snapshot from before the current debounce window
+	debounceWritten  []byte // config bytes written during the current debounce window
 }
 
-func NewConfigClient(configPath string, wrapper *Wrapper) *ConfigClient {
+func NewConfigClient(configPath string) *ConfigClient {
 	return &ConfigClient{
 		configPath:       configPath,
-		wrapper:          wrapper,
 		debounceInterval: reloadDebounceInterval,
 	}
 }
@@ -78,7 +80,16 @@ func (c *ConfigClient) GetInbounds(ctx context.Context) ([]models.Inbound, error
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
+	// Guard the on-disk read so a concurrent write from the other config
+	// writer (ConfigManager) is never observed half-applied.
+	cfglock.For(c.configPath).Lock()
+	defer cfglock.For(c.configPath).Unlock()
+
 	root, err := c.loadRootConfig()
+	if err != nil {
+		return nil, err
+	}
+
 	if err != nil {
 		return nil, err
 	}
@@ -119,7 +130,16 @@ func (c *ConfigClient) GetUsers(ctx context.Context) ([]models.User, error) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
+	// Guard the on-disk read so a concurrent write from the other config
+	// writer (ConfigManager) is never observed half-applied.
+	cfglock.For(c.configPath).Lock()
+	defer cfglock.For(c.configPath).Unlock()
+
 	root, err := c.loadRootConfig()
+	if err != nil {
+		return nil, err
+	}
+
 	if err != nil {
 		return nil, err
 	}
@@ -145,6 +165,11 @@ func (c *ConfigClient) GetUsers(ctx context.Context) ([]models.User, error) {
 func (c *ConfigClient) CreateInbound(ctx context.Context, inbound models.Inbound) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+
+	// Serialise the load-modify-save cycle against the other config writer
+	// (ConfigManager) to prevent lost updates on the shared file.
+	cfglock.For(c.configPath).Lock()
+	defer cfglock.For(c.configPath).Unlock()
 
 	root, err := c.loadRootConfig()
 	if err != nil {
@@ -182,6 +207,9 @@ func (c *ConfigClient) UpdateInbound(ctx context.Context, inbound models.Inbound
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
+	cfglock.For(c.configPath).Lock()
+	defer cfglock.For(c.configPath).Unlock()
+
 	root, err := c.loadRootConfig()
 	if err != nil {
 		return err
@@ -215,6 +243,9 @@ func (c *ConfigClient) DeleteInbound(ctx context.Context, tag string) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
+	cfglock.For(c.configPath).Lock()
+	defer cfglock.For(c.configPath).Unlock()
+
 	root, err := c.loadRootConfig()
 	if err != nil {
 		return err
@@ -235,6 +266,11 @@ func (c *ConfigClient) DeleteInbound(ctx context.Context, tag string) error {
 func (c *ConfigClient) CreateUser(ctx context.Context, user models.User) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+
+	// Serialise the load-modify-save cycle against the other config writer
+	// (ConfigManager) to prevent lost updates on the shared file.
+	cfglock.For(c.configPath).Lock()
+	defer cfglock.For(c.configPath).Unlock()
 
 	root, err := c.loadRootConfig()
 	if err != nil {
@@ -272,6 +308,9 @@ func (c *ConfigClient) CreateUser(ctx context.Context, user models.User) error {
 func (c *ConfigClient) UpdateUser(ctx context.Context, user models.User) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+
+	cfglock.For(c.configPath).Lock()
+	defer cfglock.For(c.configPath).Unlock()
 
 	root, err := c.loadRootConfig()
 	if err != nil {
@@ -315,6 +354,9 @@ func (c *ConfigClient) UpdateUser(ctx context.Context, user models.User) error {
 func (c *ConfigClient) DeleteUser(ctx context.Context, subID string) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+
+	cfglock.For(c.configPath).Lock()
+	defer cfglock.For(c.configPath).Unlock()
 
 	root, err := c.loadRootConfig()
 	if err != nil {
@@ -509,6 +551,12 @@ func buildProtocolUser(inboundType string, user models.User, existing map[string
 		} else if flow := getString(existing, "flow"); flow != "" {
 			result["flow"] = flow
 		}
+		if user.Email != "" {
+			result["email"] = user.Email
+		} else if email := getString(existing, "email"); email != "" {
+			result["email"] = email
+		}
+		result["enabled"] = user.Enabled
 		return result
 
 	case "hysteria2", "shadowtls", "shadowsocks", "trojan", "tuic":
@@ -528,6 +576,12 @@ func buildProtocolUser(inboundType string, user models.User, existing map[string
 			"name":     name,
 			"password": password,
 		}
+		if user.Email != "" {
+			result["email"] = user.Email
+		} else if email := getString(existing, "email"); email != "" {
+			result["email"] = email
+		}
+		result["enabled"] = user.Enabled
 		return result
 	}
 
@@ -621,6 +675,47 @@ func getInt(m map[string]interface{}, keys ...string) int {
 	return 0
 }
 
+// writeFileAtomic writes data to path atomically: the payload goes to a
+// temporary file in the same directory (created 0o600 — the config holds
+// secrets) which is then renamed over path, so readers never observe a
+// partially written config.
+func writeFileAtomic(path string, data []byte) error {
+	tmpFile, err := os.CreateTemp(filepath.Dir(path), ".agent-tmp-*")
+	if err != nil {
+		return fmt.Errorf("failed to create temp config file: %w", err)
+	}
+	tmpName := tmpFile.Name()
+	if err := tmpFile.Close(); err != nil {
+		os.Remove(tmpName)
+		return fmt.Errorf("failed to close temp config file: %w", err)
+	}
+
+	written := false
+	defer func() {
+		if !written {
+			os.Remove(tmpName)
+		}
+	}()
+
+	f, err := os.OpenFile(tmpName, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
+	if err != nil {
+		return fmt.Errorf("failed to open temp config file: %w", err)
+	}
+	if _, err := f.Write(data); err != nil {
+		f.Close()
+		return fmt.Errorf("failed to write config file: %w", err)
+	}
+	if err := f.Close(); err != nil {
+		return fmt.Errorf("failed to close config file: %w", err)
+	}
+	if err := os.Rename(tmpName, path); err != nil {
+		return fmt.Errorf("failed to replace config file: %w", err)
+	}
+
+	written = true
+	return nil
+}
+
 func (c *ConfigClient) saveAndReload(_ context.Context, root map[string]interface{}) error {
 	previousConfig, err := os.ReadFile(c.configPath)
 	if err != nil {
@@ -638,12 +733,8 @@ func (c *ConfigClient) saveAndReload(_ context.Context, root map[string]interfac
 		return fmt.Errorf("failed to marshal config: %w", err)
 	}
 
-	if err := os.WriteFile(c.configPath, configJSON, 0o644); err != nil {
+	if err := writeFileAtomic(c.configPath, configJSON); err != nil {
 		return fmt.Errorf("failed to write config file: %w", err)
-	}
-
-	if c.wrapper == nil {
-		return nil
 	}
 
 	// Debounce the reload: coalesce multiple config writes within a window
@@ -652,11 +743,14 @@ func (c *ConfigClient) saveAndReload(_ context.Context, root map[string]interfac
 	// but the reload is deferred until the debounce window closes.
 	c.debounceMu.Lock()
 	if c.debounceTimer == nil {
-		// First write in this window — capture the pre-window config for rollback.
+		// First write in this window — capture the pre-window config for
+		// rollback and remember the bytes this window wrote.
 		c.debounceOriginal = previousConfig
+		c.debounceWritten = configJSON
 		c.debounceTimer = time.AfterFunc(c.debounceInterval, c.performDebouncedReload)
 	} else {
 		// Subsequent write in the same window — reset the timer.
+		c.debounceWritten = configJSON
 		c.debounceTimer.Reset(c.debounceInterval)
 	}
 	c.debounceMu.Unlock()
@@ -665,11 +759,15 @@ func (c *ConfigClient) saveAndReload(_ context.Context, root map[string]interfac
 }
 
 // performDebouncedReload executes the deferred reload after the debounce
-// window closes. On failure it rolls back to the pre-window config and retries.
+// window closes. On failure it rolls back to the pre-window config and retries,
+// but only when the file on disk is still the bytes this window wrote — a
+// concurrent writer must never have its newer config clobbered by the rollback.
 func (c *ConfigClient) performDebouncedReload() {
 	c.debounceMu.Lock()
 	original := c.debounceOriginal
+	written := c.debounceWritten
 	c.debounceOriginal = nil
+	c.debounceWritten = nil
 	c.debounceTimer = nil
 	c.debounceMu.Unlock()
 
@@ -681,13 +779,27 @@ func (c *ConfigClient) performDebouncedReload() {
 	defer cancel()
 
 	if err := c.doReload(reloadCtx); err != nil {
-		// Rollback to the pre-window config and retry reload.
-		if restoreErr := os.WriteFile(c.configPath, original, 0o644); restoreErr != nil {
-			fmt.Fprintf(os.Stderr, "reload failed: %v; rollback write failed: %v\n", err, restoreErr)
-			return
+		// Rollback to the pre-window config and retry reload, but only if the
+		// on-disk config is still the one this debounce window wrote.
+		lock := cfglock.For(c.configPath)
+		lock.Lock()
+		current, readErr := os.ReadFile(c.configPath)
+		needRollback := readErr == nil && bytes.Equal(current, written) && !bytes.Equal(current, original)
+		if needRollback {
+			if restoreErr := writeFileAtomic(c.configPath, original); restoreErr != nil {
+				lock.Unlock()
+				fmt.Fprintf(os.Stderr, "reload failed: %v; rollback write failed: %v\n", err, restoreErr)
+				return
+			}
 		}
+		lock.Unlock()
+
 		_ = c.doReload(reloadCtx)
-		fmt.Fprintf(os.Stderr, "reload failed and config rolled back: %v\n", err)
+		if needRollback {
+			fmt.Fprintf(os.Stderr, "reload failed and config rolled back: %v\n", err)
+		} else {
+			fmt.Fprintf(os.Stderr, "reload failed: %v; config changed since last write, keeping current file\n", err)
+		}
 	}
 }
 

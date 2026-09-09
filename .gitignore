@@ -44,5 +44,6 @@ Thumbs.db
 
 # Internal planning / not for public repo
 /.sisyphus/
+/.hooks/
 /vpn-server-*.md
 /docs/vpn-server-*.md

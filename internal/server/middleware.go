@@ -20,9 +20,17 @@ func LoggingMiddleware(logger *slog.Logger) func(http.Handler) http.Handler {
 
 			duration := time.Since(start)
 
+			// Health/ready probes are logged at Debug level to avoid log spam
+			// from monitoring systems hitting these endpoints continuously.
+			level := slog.LevelInfo
+			switch r.URL.Path {
+			case "/healthz", "/readyz":
+				level = slog.LevelDebug
+			}
+
 			logger.LogAttrs(
 				r.Context(),
-				slog.LevelInfo,
+				level,
 				"request",
 				slog.String("method", r.Method),
 				slog.String("path", r.URL.Path),

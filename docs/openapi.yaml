@@ -3,7 +3,7 @@ info:
   title: sing-box-agent API
   version: 1.2.0
   description: |
-    A lightweight Go service that embeds sing-box as a library and provides a REST API for remote management.
+    A lightweight Go service that manages a local sing-box instance (as a separate process) and provides a REST API for remote management.
     Designed to replace 3x-ui panels and SSH-based config management while maintaining multi-server architecture.
 
     **Key Features:**
@@ -57,13 +57,10 @@ paths:
         '200':
           description: Service is healthy
           content:
-            application/json:
+            text/plain:
               schema:
-                $ref: '#/components/schemas/SuccessResponse'
-              example:
-                success: true
-                data:
-                  status: healthy
+                type: string
+              example: OK
 
   /readyz:
     get:
@@ -479,7 +476,7 @@ paths:
       tags:
         - Stats
       summary: Online users
-      description: Retrieve list of currently online users
+      description: Retrieve list of currently online users (currently always empty — online detection is not implemented; requires the sing-box clash API)
       operationId: getOnlineUsers
       responses:
         '200':
@@ -630,8 +627,8 @@ paths:
                   description: Inbound tag
                 format:
                   type: string
-                  enum: [vless, vmess, trojan, hysteria2, tuic]
-                  default: vless
+                  enum: [v2ray, clash, sing-box]
+                  default: sing-box
                   description: Output format
       responses:
         '200':
@@ -705,6 +702,8 @@ components:
         signature = HMAC-SHA256(canonical_string, secret).hexdigest()
         ```
 
+        Note: only the path is signed — the query string is NOT covered by the signature.
+
   schemas:
     SuccessResponse:
       type: object
@@ -764,7 +763,7 @@ components:
           description: Unique inbound identifier
         type:
           type: string
-          enum: [vless, vmess, trojan, hysteria2, shadowtls, tuic]
+          enum: [vless, vmess, trojan, shadowsocks, shadowtls, hysteria2, tuic]
           description: Protocol type
         listen:
           type: string
@@ -796,7 +795,7 @@ components:
           description: Unique inbound identifier
         type:
           type: string
-          enum: [vless, vmess, trojan, hysteria2, shadowtls, tuic]
+          enum: [vless, vmess, trojan, shadowsocks, shadowtls, hysteria2, tuic]
         listen:
           type: string
         listen_port:
@@ -1052,6 +1051,9 @@ components:
         - New key: Normal processing, cached for 24h
 
         Keys are per-server scope, stored in LRU cache (24h TTL, 10k max entries)
+
+        Idempotency middleware is enabled on all mutating endpoints; requests
+        without an Idempotency-Key header pass through unchanged.
       required: false
       schema:
         type: string

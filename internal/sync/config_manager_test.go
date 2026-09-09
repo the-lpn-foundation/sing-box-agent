@@ -12,32 +12,15 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/oglenyaboss/sing-box-agent/internal/models"
-	"github.com/oglenyaboss/sing-box-agent/internal/singbox"
 )
 
-// mockSingBox is a manual mock for singbox.SingBox interface
-type mockSingBox struct {
-	running bool
-	err     error
+// mockReloader is a manual mock for the sync Reloader interface
+type mockReloader struct {
+	err error
 }
 
-func (m *mockSingBox) Start(ctx context.Context) error {
+func (m *mockReloader) Reload(ctx context.Context) error {
 	return m.err
-}
-
-func (m *mockSingBox) Stop(ctx context.Context) error {
-	return m.err
-}
-
-func (m *mockSingBox) Reload(ctx context.Context, config *singbox.Config) error {
-	if m == nil {
-		panic("mockSingBox.Reload called on nil receiver")
-	}
-	return m.err
-}
-
-func (m *mockSingBox) Status() singbox.Status {
-	return singbox.Status{Running: m.running}
 }
 
 // setupTestConfig creates a temporary config file with the given content
@@ -65,13 +48,11 @@ func readConfig(t *testing.T, path string) map[string]interface{} {
 // TestNewConfigManager verifies the constructor
 func TestNewConfigManager(t *testing.T) {
 	path := setupTestConfig(t, `{}`)
-	sb := &mockSingBox{}
 
-	mgr := NewConfigManager(path, sb)
+	mgr := NewConfigManager(path, nil)
 
 	require.NotNil(t, mgr)
 	require.Equal(t, path, mgr.configPath)
-	require.Equal(t, sb, mgr.singbox)
 }
 
 // TestConfigManager_AddUser tests adding users to inbounds
@@ -1111,7 +1092,7 @@ func TestConfigManager_Reload(t *testing.T) {
 	tests := []struct {
 		name        string
 		config      string
-		singbox     singbox.SingBox // Use interface type so nil is truly nil
+		reloader    Reloader
 		wantErr     bool
 		errContains string
 	}{
@@ -1120,31 +1101,31 @@ func TestConfigManager_Reload(t *testing.T) {
 			config: `{
 				"inbounds": [{"type": "vless", "tag": "test-in"}]
 			}`,
-			singbox: &mockSingBox{running: true, err: nil},
-			wantErr: false,
+			reloader: &mockReloader{err: nil},
+			wantErr:  false,
 		},
 		{
-			name:        "error - singbox not configured",
+			name:        "error - reloader not configured",
 			config:      `{}`,
-			singbox:     nil, // nil interface, not nil pointer
+			reloader:    nil,
 			wantErr:     true,
 			errContains: "sing-box client is not configured",
 		},
 		{
-			name: "error - singbox reload fails",
+			name: "error - reload fails",
 			config: `{
 				"inbounds": [{"type": "vless", "tag": "test-in"}]
 			}`,
-			singbox:     &mockSingBox{running: true, err: &mockError{msg: "reload failed"}},
+			reloader:    &mockReloader{err: &mockError{msg: "reload failed"}},
 			wantErr:     true,
-			errContains: "reload sing-box",
+			errContains: "reload failed",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			path := setupTestConfig(t, tt.config)
-			mgr := NewConfigManager(path, tt.singbox)
+			mgr := NewConfigManager(path, tt.reloader)
 
 			err := mgr.Reload(context.Background())
 

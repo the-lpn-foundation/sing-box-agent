@@ -33,11 +33,7 @@ type UserHandler struct {
 	singbox syncpkg.SingBoxClient
 }
 
-// NewUserHandler creates a new user handler.
-func NewUserHandler() *UserHandler {
-	return &UserHandler{}
-}
-
+// NewUserHandlerWithClient creates a new user handler backed by a sing-box client.
 func NewUserHandlerWithClient(singbox syncpkg.SingBoxClient) *UserHandler {
 	return &UserHandler{singbox: singbox}
 }
@@ -138,270 +134,13 @@ func writeCreated(w http.ResponseWriter, data interface{}) {
 	_ = json.NewEncoder(w).Encode(resp)
 }
 
-// In-memory user store used only when no sing-box client is injected
-// (UserHandler.singbox == nil). This path exists for tests and smoke runs
-// without a live sing-box; production always goes through the client path,
-// which calls sing-box directly. See NewUserHandlerWithClient above.
-var (
-	mockInbounds = map[string]bool{
-		"vless-reality": true,
-		"hysteria2":     true,
-	}
-	mockUsers = make(map[string]map[string]models.User) // inboundTag -> subID -> User
-)
-
-func init() {
-	mockUsers["vless-reality"] = make(map[string]models.User)
-	mockUsers["hysteria2"] = make(map[string]models.User)
-}
-
 // ListUsers handles GET /inbounds/{tag}/users.
 func (h *UserHandler) ListUsers(w http.ResponseWriter, r *http.Request) {
-	if h.singbox != nil {
-		h.listUsersFromClient(w, r)
+	if h.singbox == nil {
+		writeError(w, http.StatusServiceUnavailable, "INTERNAL_ERROR", "sing-box client not configured")
 		return
 	}
 
-	// Extract inbound tag from path
-	inboundTag := extractInboundTag(r.URL.Path)
-	if inboundTag == "" {
-		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "inbound tag is required")
-		return
-	}
-
-	// Check if inbound exists
-	if !mockInbounds[inboundTag] {
-		writeError(w, http.StatusNotFound, "INBOUND_NOT_FOUND", fmt.Sprintf("inbound %s not found", inboundTag))
-		return
-	}
-
-	// Get users for this inbound
-	users := mockUsers[inboundTag]
-	userList := make([]models.User, 0, len(users))
-	for _, user := range users {
-		userList = append(userList, user)
-	}
-
-	writeSuccess(w, userList)
-}
-
-// GetUser handles GET /inbounds/{tag}/users/{subId}.
-func (h *UserHandler) GetUser(w http.ResponseWriter, r *http.Request) {
-	if h.singbox != nil {
-		h.getUserFromClient(w, r)
-		return
-	}
-
-	// Extract inbound tag and subID from path
-	inboundTag, subID := extractInboundTagAndSubID(r.URL.Path)
-	if inboundTag == "" || subID == "" {
-		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "inbound tag and subID are required")
-		return
-	}
-
-	// Check if inbound exists
-	if !mockInbounds[inboundTag] {
-		writeError(w, http.StatusNotFound, "INBOUND_NOT_FOUND", fmt.Sprintf("inbound %s not found", inboundTag))
-		return
-	}
-
-	// Get user
-	users, ok := mockUsers[inboundTag]
-	if !ok {
-		writeError(w, http.StatusNotFound, "USER_NOT_FOUND", fmt.Sprintf("user %s not found", subID))
-		return
-	}
-
-	user, ok := users[subID]
-	if !ok {
-		writeError(w, http.StatusNotFound, "USER_NOT_FOUND", fmt.Sprintf("user %s not found", subID))
-		return
-	}
-
-	writeSuccess(w, user)
-}
-
-// CreateUser handles POST /inbounds/{tag}/users.
-func (h *UserHandler) CreateUser(w http.ResponseWriter, r *http.Request) {
-	if h.singbox != nil {
-		h.createUserWithClient(w, r)
-		return
-	}
-
-	// Extract inbound tag from path
-	inboundTag := extractInboundTag(r.URL.Path)
-	if inboundTag == "" {
-		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "inbound tag is required")
-		return
-	}
-
-	// Check if inbound exists
-	if !mockInbounds[inboundTag] {
-		writeError(w, http.StatusNotFound, "INBOUND_NOT_FOUND", fmt.Sprintf("inbound %s not found", inboundTag))
-		return
-	}
-
-	// Parse request body
-	var req UserRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", fmt.Sprintf("invalid request body: %v", err))
-		return
-	}
-
-	// Validate request
-	if err := req.Validate(); err != nil {
-		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", err.Error())
-		return
-	}
-
-	// Check if user already exists (duplicate subID)
-	users := mockUsers[inboundTag]
-	if _, exists := users[req.SubID]; exists {
-		writeError(w, http.StatusConflict, "USER_EXISTS", fmt.Sprintf("user %s already exists", req.SubID))
-		return
-	}
-
-	// Create user
-	user := req.ToUser(inboundTag)
-
-	if mockUsers[inboundTag] == nil {
-		mockUsers[inboundTag] = make(map[string]models.User)
-	}
-	mockUsers[inboundTag][user.SubID] = user
-
-	writeCreated(w, user)
-}
-
-// UpdateUser handles PUT /inbounds/{tag}/users/{subId}.
-func (h *UserHandler) UpdateUser(w http.ResponseWriter, r *http.Request) {
-	if h.singbox != nil {
-		h.updateUserWithClient(w, r)
-		return
-	}
-
-	// Extract inbound tag and subID from path
-	inboundTag, subID := extractInboundTagAndSubID(r.URL.Path)
-	if inboundTag == "" || subID == "" {
-		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "inbound tag and subID are required")
-		return
-	}
-
-	// Check if inbound exists
-	if !mockInbounds[inboundTag] {
-		writeError(w, http.StatusNotFound, "INBOUND_NOT_FOUND", fmt.Sprintf("inbound %s not found", inboundTag))
-		return
-	}
-
-	// Check if user exists
-	users, ok := mockUsers[inboundTag]
-	if !ok {
-		writeError(w, http.StatusNotFound, "USER_NOT_FOUND", fmt.Sprintf("user %s not found", subID))
-		return
-	}
-
-	_, ok = users[subID]
-	if !ok {
-		writeError(w, http.StatusNotFound, "USER_NOT_FOUND", fmt.Sprintf("user %s not found", subID))
-		return
-	}
-
-	// Parse request body
-	var req UserRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", fmt.Sprintf("invalid request body: %v", err))
-		return
-	}
-
-	// Validate request (subID in body must match path)
-	if req.SubID != "" && req.SubID != subID {
-		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "subId in body must match subID in path")
-		return
-	}
-
-	// Use subID from path
-	req.SubID = subID
-
-	if err := req.Validate(); err != nil {
-		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", err.Error())
-		return
-	}
-
-	// Update user
-	user := req.ToUser(inboundTag)
-	// Preserve UUID from existing user if not provided
-	existingUser := users[subID]
-	if req.UUID == "" {
-		user.UUID = existingUser.UUID
-	}
-
-	mockUsers[inboundTag][user.SubID] = user
-
-	writeSuccess(w, user)
-}
-
-// DeleteUser handles DELETE /inbounds/{tag}/users/{subId}.
-func (h *UserHandler) DeleteUser(w http.ResponseWriter, r *http.Request) {
-	if h.singbox != nil {
-		h.deleteUserWithClient(w, r)
-		return
-	}
-
-	// Extract inbound tag and subID from path
-	inboundTag, subID := extractInboundTagAndSubID(r.URL.Path)
-	if inboundTag == "" || subID == "" {
-		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "inbound tag and subID are required")
-		return
-	}
-
-	// Check if inbound exists
-	if !mockInbounds[inboundTag] {
-		writeError(w, http.StatusNotFound, "INBOUND_NOT_FOUND", fmt.Sprintf("inbound %s not found", inboundTag))
-		return
-	}
-
-	// Check if user exists
-	users, ok := mockUsers[inboundTag]
-	if !ok {
-		writeError(w, http.StatusNotFound, "USER_NOT_FOUND", fmt.Sprintf("user %s not found", subID))
-		return
-	}
-
-	_, ok = users[subID]
-	if !ok {
-		writeError(w, http.StatusNotFound, "USER_NOT_FOUND", fmt.Sprintf("user %s not found", subID))
-		return
-	}
-
-	delete(users, subID)
-
-	w.WriteHeader(http.StatusNoContent)
-}
-
-// extractInboundTag extracts the inbound tag from the path.
-// Expected path format: /inbounds/{tag}/users or /inbounds/{tag}/users/{subId}
-func extractInboundTag(path string) string {
-	parts := strings.Split(path, "/")
-	if len(parts) >= 3 && parts[1] == "inbounds" {
-		return parts[2]
-	}
-	return ""
-}
-
-// extractInboundTagAndSubID extracts the inbound tag and subID from the path.
-// Expected path format: /inbounds/{tag}/users/{subId}
-func extractInboundTagAndSubID(path string) (inboundTag, subID string) {
-	parts := strings.Split(path, "/")
-	if len(parts) >= 5 && parts[1] == "inbounds" && parts[3] == "users" {
-		// ensure tag and subID are non-empty
-		if parts[2] == "" || parts[4] == "" {
-			return "", ""
-		}
-		return parts[2], parts[4]
-	}
-	return "", ""
-}
-
-func (h *UserHandler) listUsersFromClient(w http.ResponseWriter, r *http.Request) {
 	inboundTag := extractInboundTag(r.URL.Path)
 	if inboundTag == "" {
 		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "inbound tag is required")
@@ -429,7 +168,13 @@ func (h *UserHandler) listUsersFromClient(w http.ResponseWriter, r *http.Request
 	writeSuccess(w, filtered)
 }
 
-func (h *UserHandler) getUserFromClient(w http.ResponseWriter, r *http.Request) {
+// GetUser handles GET /inbounds/{tag}/users/{subId}.
+func (h *UserHandler) GetUser(w http.ResponseWriter, r *http.Request) {
+	if h.singbox == nil {
+		writeError(w, http.StatusServiceUnavailable, "INTERNAL_ERROR", "sing-box client not configured")
+		return
+	}
+
 	inboundTag, subID := extractInboundTagAndSubID(r.URL.Path)
 	if inboundTag == "" || subID == "" {
 		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "inbound tag and subID are required")
@@ -457,7 +202,13 @@ func (h *UserHandler) getUserFromClient(w http.ResponseWriter, r *http.Request) 
 	writeError(w, http.StatusNotFound, "USER_NOT_FOUND", fmt.Sprintf("user %s not found", subID))
 }
 
-func (h *UserHandler) createUserWithClient(w http.ResponseWriter, r *http.Request) {
+// CreateUser handles POST /inbounds/{tag}/users.
+func (h *UserHandler) CreateUser(w http.ResponseWriter, r *http.Request) {
+	if h.singbox == nil {
+		writeError(w, http.StatusServiceUnavailable, "INTERNAL_ERROR", "sing-box client not configured")
+		return
+	}
+
 	inboundTag := extractInboundTag(r.URL.Path)
 	if inboundTag == "" {
 		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "inbound tag is required")
@@ -489,7 +240,13 @@ func (h *UserHandler) createUserWithClient(w http.ResponseWriter, r *http.Reques
 	writeCreated(w, user)
 }
 
-func (h *UserHandler) updateUserWithClient(w http.ResponseWriter, r *http.Request) {
+// UpdateUser handles PUT /inbounds/{tag}/users/{subId}.
+func (h *UserHandler) UpdateUser(w http.ResponseWriter, r *http.Request) {
+	if h.singbox == nil {
+		writeError(w, http.StatusServiceUnavailable, "INTERNAL_ERROR", "sing-box client not configured")
+		return
+	}
+
 	inboundTag, subID := extractInboundTagAndSubID(r.URL.Path)
 	if inboundTag == "" || subID == "" {
 		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "inbound tag and subID are required")
@@ -541,7 +298,13 @@ func (h *UserHandler) updateUserWithClient(w http.ResponseWriter, r *http.Reques
 	writeSuccess(w, user)
 }
 
-func (h *UserHandler) deleteUserWithClient(w http.ResponseWriter, r *http.Request) {
+// DeleteUser handles DELETE /inbounds/{tag}/users/{subId}.
+func (h *UserHandler) DeleteUser(w http.ResponseWriter, r *http.Request) {
+	if h.singbox == nil {
+		writeError(w, http.StatusServiceUnavailable, "INTERNAL_ERROR", "sing-box client not configured")
+		return
+	}
+
 	inboundTag, subID := extractInboundTagAndSubID(r.URL.Path)
 	if inboundTag == "" || subID == "" {
 		writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "inbound tag and subID are required")
@@ -577,6 +340,30 @@ func (h *UserHandler) deleteUserWithClient(w http.ResponseWriter, r *http.Reques
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// extractInboundTag extracts the inbound tag from the path.
+// Expected path format: /inbounds/{tag}/users or /inbounds/{tag}/users/{subId}
+func extractInboundTag(path string) string {
+	parts := strings.Split(path, "/")
+	if len(parts) >= 3 && parts[1] == "inbounds" {
+		return parts[2]
+	}
+	return ""
+}
+
+// extractInboundTagAndSubID extracts the inbound tag and subID from the path.
+// Expected path format: /inbounds/{tag}/users/{subId}
+func extractInboundTagAndSubID(path string) (inboundTag, subID string) {
+	parts := strings.Split(path, "/")
+	if len(parts) >= 5 && parts[1] == "inbounds" && parts[3] == "users" {
+		// ensure tag and subID are non-empty
+		if parts[2] == "" || parts[4] == "" {
+			return "", ""
+		}
+		return parts[2], parts[4]
+	}
+	return "", ""
 }
 
 func (h *UserHandler) inboundExists(r *http.Request, inboundTag string) bool {

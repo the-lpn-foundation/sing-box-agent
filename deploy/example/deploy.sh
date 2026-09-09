@@ -41,7 +41,7 @@ if [[ -f "$SINGBOX_CONFIG_DEST" ]]; then
 fi
 
 # 2. Install configs.
-install -D -m 0644 "$SINGBOX_CONFIG_SRC" "$SINGBOX_CONFIG_DEST"
+install -D -m 0600 "$SINGBOX_CONFIG_SRC" "$SINGBOX_CONFIG_DEST"
 install -D -m 0600 "$AGENT_CONFIG_SRC" "$AGENT_CONFIG_DEST"
 
 # 3. Install binary.

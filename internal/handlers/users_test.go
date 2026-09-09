@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -128,25 +129,89 @@ func TestUserRequestToUser(t *testing.T) {
 	}
 }
 
-// TestListUsers tests the ListUsers handler.
-func TestListUsers(t *testing.T) {
-	handler := NewUserHandler()
+// fakeUserStore is a stateful in-memory syncpkg.SingBoxClient used to
+// exercise the client-path user handlers without a live sing-box.
+type fakeUserStore struct {
+	inbounds []models.Inbound
+	users    map[string]models.User // keyed by SubID
+}
 
-	// Add some mock users
-	mockUsers["vless-reality"]["user1"] = models.User{
+func newFakeUserStore() *fakeUserStore {
+	return &fakeUserStore{
+		inbounds: []models.Inbound{
+			{Tag: "vless-reality", Type: "vless"},
+			{Tag: "hysteria2", Type: "hysteria2"},
+		},
+		users: make(map[string]models.User),
+	}
+}
+
+func (f *fakeUserStore) GetInbounds(ctx context.Context) ([]models.Inbound, error) {
+	return f.inbounds, nil
+}
+
+func (f *fakeUserStore) GetUsers(ctx context.Context) ([]models.User, error) {
+	users := make([]models.User, 0, len(f.users))
+	for _, user := range f.users {
+		users = append(users, user)
+	}
+	return users, nil
+}
+
+func (f *fakeUserStore) CreateInbound(ctx context.Context, inbound models.Inbound) error {
+	return nil
+}
+
+func (f *fakeUserStore) UpdateInbound(ctx context.Context, inbound models.Inbound) error {
+	return nil
+}
+
+func (f *fakeUserStore) DeleteInbound(ctx context.Context, tag string) error {
+	return nil
+}
+
+func (f *fakeUserStore) CreateUser(ctx context.Context, user models.User) error {
+	if _, exists := f.users[user.SubID]; exists {
+		return fmt.Errorf("user with subID %s already exists", user.SubID)
+	}
+	f.users[user.SubID] = user
+	return nil
+}
+
+func (f *fakeUserStore) UpdateUser(ctx context.Context, user models.User) error {
+	if _, exists := f.users[user.SubID]; !exists {
+		return fmt.Errorf("user with subID %s not found", user.SubID)
+	}
+	f.users[user.SubID] = user
+	return nil
+}
+
+func (f *fakeUserStore) DeleteUser(ctx context.Context, subID string) error {
+	if _, exists := f.users[subID]; !exists {
+		return fmt.Errorf("user with subID %s not found", subID)
+	}
+	delete(f.users, subID)
+	return nil
+}
+
+// TestListUsers tests the ListUsers handler via a fake sing-box client.
+func TestListUsers(t *testing.T) {
+	store := newFakeUserStore()
+	store.users["user1"] = models.User{
 		SubID:      "user1",
 		UUID:       "uuid1",
 		InboundTag: "vless-reality",
 		Enabled:    true,
 		Email:      "user1@example.com",
 	}
-	mockUsers["vless-reality"]["user2"] = models.User{
+	store.users["user2"] = models.User{
 		SubID:      "user2",
 		UUID:       "uuid2",
 		InboundTag: "vless-reality",
 		Enabled:    true,
 		Email:      "user2@example.com",
 	}
+	handler := NewUserHandlerWithClient(store)
 
 	tests := []struct {
 		name          string
@@ -183,19 +248,15 @@ func TestListUsers(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Create a test request
 			req := httptest.NewRequest(http.MethodGet, tt.path, nil)
 			w := httptest.NewRecorder()
 
-			// Call the handler
 			handler.ListUsers(w, req)
 
-			// Check status code
 			if w.Code != tt.wantStatus {
 				t.Errorf("ListUsers() status = %d, want %d", w.Code, tt.wantStatus)
 			}
 
-			// Check response
 			if tt.wantErrorCode != "" {
 				var resp ErrorResponse
 				if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
@@ -219,25 +280,19 @@ func TestListUsers(t *testing.T) {
 			}
 		})
 	}
-
-	// Clean up
-	delete(mockUsers["vless-reality"], "user1")
-	delete(mockUsers["vless-reality"], "user2")
 }
 
-// TestGetUser tests the GetUser handler.
+// TestGetUser tests the GetUser handler via a fake sing-box client.
 func TestGetUser(t *testing.T) {
-	handler := NewUserHandler()
-
-	// Add a mock user
-	testUser := models.User{
+	store := newFakeUserStore()
+	store.users["user1"] = models.User{
 		SubID:      "user1",
 		UUID:       "uuid1",
 		InboundTag: "vless-reality",
 		Enabled:    true,
 		Email:      "user1@example.com",
 	}
-	mockUsers["vless-reality"]["user1"] = testUser
+	handler := NewUserHandlerWithClient(store)
 
 	tests := []struct {
 		name          string
@@ -307,14 +362,16 @@ func TestGetUser(t *testing.T) {
 			}
 		})
 	}
-
-	// Clean up
-	delete(mockUsers["vless-reality"], "user1")
 }
 
-// TestCreateUser tests the CreateUser handler.
+// TestCreateUser tests the CreateUser handler via a fake sing-box client.
 func TestCreateUser(t *testing.T) {
-	handler := NewUserHandler()
+	store := newFakeUserStore()
+	store.users["existing-user"] = models.User{
+		SubID: "existing-user",
+		UUID:  "uuid-existing",
+	}
+	handler := NewUserHandlerWithClient(store)
 
 	tests := []struct {
 		name          string
@@ -380,12 +437,6 @@ func TestCreateUser(t *testing.T) {
 		},
 	}
 
-	// Setup: add an existing user
-	mockUsers["vless-reality"]["existing-user"] = models.User{
-		SubID: "existing-user",
-		UUID:  "uuid-existing",
-	}
-
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			bodyBytes, _ := json.Marshal(tt.body)
@@ -426,25 +477,19 @@ func TestCreateUser(t *testing.T) {
 			}
 		})
 	}
-
-	// Clean up
-	delete(mockUsers["vless-reality"], "existing-user")
-	delete(mockUsers["vless-reality"], "new-user")
-	delete(mockUsers["vless-reality"], "user-with-uuid")
 }
 
-// TestUpdateUser tests the UpdateUser handler.
+// TestUpdateUser tests the UpdateUser handler via a fake sing-box client.
 func TestUpdateUser(t *testing.T) {
-	handler := NewUserHandler()
-
-	// Setup: add a user to update
-	mockUsers["vless-reality"]["user1"] = models.User{
+	store := newFakeUserStore()
+	store.users["user1"] = models.User{
 		SubID:      "user1",
 		UUID:       "original-uuid",
 		InboundTag: "vless-reality",
 		Enabled:    true,
 		Email:      "original@example.com",
 	}
+	handler := NewUserHandlerWithClient(store)
 
 	tests := []struct {
 		name          string
@@ -496,25 +541,15 @@ func TestUpdateUser(t *testing.T) {
 			wantErrorCode: "INBOUND_NOT_FOUND",
 		},
 		{
-			name:          "missing subID in body (should use path)",
-			path:          "/inbounds/vless-reality/users/user1",
-			body:          UserRequest{Email: "updated@example.com"},
-			wantStatus:    http.StatusOK,
-			wantErrorCode: "",
+			name:       "missing subID in body (should use path)",
+			path:       "/inbounds/vless-reality/users/user1",
+			body:       UserRequest{Email: "updated@example.com"},
+			wantStatus: http.StatusOK,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Reset user to original state
-			mockUsers["vless-reality"]["user1"] = models.User{
-				SubID:      "user1",
-				UUID:       "original-uuid",
-				InboundTag: "vless-reality",
-				Enabled:    true,
-				Email:      "original@example.com",
-			}
-
 			bodyBytes, _ := json.Marshal(tt.body)
 			req := httptest.NewRequest(http.MethodPut, tt.path, bytes.NewReader(bodyBytes))
 			req.Header.Set("Content-Type", "application/json")
@@ -552,23 +587,12 @@ func TestUpdateUser(t *testing.T) {
 			}
 		})
 	}
-
-	// Clean up
-	delete(mockUsers["vless-reality"], "user1")
 }
 
-// TestDeleteUser tests the DeleteUser handler.
+// TestDeleteUser tests the DeleteUser handler via a fake sing-box client.
 func TestDeleteUser(t *testing.T) {
-	handler := NewUserHandler()
-
-	// Setup: add a user to delete
-	mockUsers["vless-reality"]["user1"] = models.User{
-		SubID:      "user1",
-		UUID:       "uuid1",
-		InboundTag: "vless-reality",
-		Enabled:    true,
-		Email:      "user1@example.com",
-	}
+	store := newFakeUserStore()
+	handler := NewUserHandlerWithClient(store)
 
 	tests := []struct {
 		name          string
@@ -603,15 +627,13 @@ func TestDeleteUser(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Re-add user if deleted
-			if tt.name == "delete user successfully" {
-				mockUsers["vless-reality"]["user1"] = models.User{
-					SubID:      "user1",
-					UUID:       "uuid1",
-					InboundTag: "vless-reality",
-					Enabled:    true,
-					Email:      "user1@example.com",
-				}
+			// Re-seed the user before each successful delete
+			store.users["user1"] = models.User{
+				SubID:      "user1",
+				UUID:       "uuid1",
+				InboundTag: "vless-reality",
+				Enabled:    true,
+				Email:      "user1@example.com",
 			}
 
 			req := httptest.NewRequest(http.MethodDelete, tt.path, nil)
@@ -633,15 +655,76 @@ func TestDeleteUser(t *testing.T) {
 				}
 			} else if tt.name == "delete user successfully" {
 				// Verify user was deleted
-				if _, exists := mockUsers["vless-reality"]["user1"]; exists {
+				if _, exists := store.users["user1"]; exists {
 					t.Errorf("DeleteUser() user still exists after deletion")
 				}
 			}
 		})
 	}
+}
 
-	// Clean up
-	delete(mockUsers["vless-reality"], "user1")
+// TestUserHandler_NilClientGuard verifies that every user handler responds
+// with 503 instead of panicking when no sing-box client is configured.
+func TestUserHandler_NilClientGuard(t *testing.T) {
+	handler := NewUserHandlerWithClient(nil)
+
+	tests := []struct {
+		name   string
+		method string
+		path   string
+		call   func(w http.ResponseWriter, r *http.Request)
+	}{
+		{
+			name:   "ListUsers",
+			method: http.MethodGet,
+			path:   "/inbounds/vless-reality/users",
+			call:   handler.ListUsers,
+		},
+		{
+			name:   "GetUser",
+			method: http.MethodGet,
+			path:   "/inbounds/vless-reality/users/user1",
+			call:   handler.GetUser,
+		},
+		{
+			name:   "CreateUser",
+			method: http.MethodPost,
+			path:   "/inbounds/vless-reality/users",
+			call:   handler.CreateUser,
+		},
+		{
+			name:   "UpdateUser",
+			method: http.MethodPut,
+			path:   "/inbounds/vless-reality/users/user1",
+			call:   handler.UpdateUser,
+		},
+		{
+			name:   "DeleteUser",
+			method: http.MethodDelete,
+			path:   "/inbounds/vless-reality/users/user1",
+			call:   handler.DeleteUser,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(tt.method, tt.path, nil)
+			w := httptest.NewRecorder()
+
+			tt.call(w, req)
+
+			if w.Code != http.StatusServiceUnavailable {
+				t.Errorf("%s with nil client: status = %d, want %d", tt.name, w.Code, http.StatusServiceUnavailable)
+			}
+			var resp ErrorResponse
+			if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+				t.Fatalf("Failed to decode response: %v", err)
+			}
+			if resp.Error.Code != "INTERNAL_ERROR" {
+				t.Errorf("%s with nil client: error code = %s, want INTERNAL_ERROR", tt.name, resp.Error.Code)
+			}
+		})
+	}
 }
 
 // TestExtractInboundTag tests the extractInboundTag helper function.
@@ -760,7 +843,7 @@ func TestNewUserHandlerWithClient(t *testing.T) {
 	}
 }
 
-// TestListUsersWithClient tests listUsersFromClient.
+// TestListUsersWithClient tests ListUsers.
 func TestListUsersWithClient(t *testing.T) {
 	mockClient := &mockUserSingBoxClient{
 		users: []models.User{
@@ -821,10 +904,10 @@ func TestListUsersWithClient(t *testing.T) {
 			req := httptest.NewRequest(http.MethodGet, tt.path, nil)
 			w := httptest.NewRecorder()
 
-			handler.listUsersFromClient(w, req)
+			handler.ListUsers(w, req)
 
 			if w.Code != tt.wantStatus {
-				t.Errorf("listUsersFromClient() status = %d, want %d", w.Code, tt.wantStatus)
+				t.Errorf("ListUsers() status = %d, want %d", w.Code, tt.wantStatus)
 			}
 
 			if tt.wantErrorCode != "" {
@@ -833,7 +916,7 @@ func TestListUsersWithClient(t *testing.T) {
 					t.Fatalf("Failed to decode response: %v", err)
 				}
 				if resp.Error.Code != tt.wantErrorCode {
-					t.Errorf("listUsersFromClient() error code = %s, want %s", resp.Error.Code, tt.wantErrorCode)
+					t.Errorf("ListUsers() error code = %s, want %s", resp.Error.Code, tt.wantErrorCode)
 				}
 			} else if tt.wantUserCount >= 0 {
 				var resp SuccessResponse
@@ -845,14 +928,14 @@ func TestListUsersWithClient(t *testing.T) {
 					t.Fatalf("Response data is not an array")
 				}
 				if len(users) != tt.wantUserCount {
-					t.Errorf("listUsersFromClient() user count = %d, want %d", len(users), tt.wantUserCount)
+					t.Errorf("ListUsers() user count = %d, want %d", len(users), tt.wantUserCount)
 				}
 			}
 		})
 	}
 }
 
-// TestGetUserWithClient tests getUserFromClient.
+// TestGetUserWithClient tests GetUser.
 func TestGetUserWithClient(t *testing.T) {
 	mockClient := &mockUserSingBoxClient{
 		users: []models.User{
@@ -916,10 +999,10 @@ func TestGetUserWithClient(t *testing.T) {
 			req := httptest.NewRequest(http.MethodGet, tt.path, nil)
 			w := httptest.NewRecorder()
 
-			handler.getUserFromClient(w, req)
+			handler.GetUser(w, req)
 
 			if w.Code != tt.wantStatus {
-				t.Errorf("getUserFromClient() status = %d, want %d", w.Code, tt.wantStatus)
+				t.Errorf("GetUser() status = %d, want %d", w.Code, tt.wantStatus)
 			}
 
 			if tt.wantErrorCode != "" {
@@ -928,7 +1011,7 @@ func TestGetUserWithClient(t *testing.T) {
 					t.Fatalf("Failed to decode response: %v", err)
 				}
 				if resp.Error.Code != tt.wantErrorCode {
-					t.Errorf("getUserFromClient() error code = %s, want %s", resp.Error.Code, tt.wantErrorCode)
+					t.Errorf("GetUser() error code = %s, want %s", resp.Error.Code, tt.wantErrorCode)
 				}
 			} else if tt.wantSubID != "" {
 				var resp SuccessResponse
@@ -941,14 +1024,14 @@ func TestGetUserWithClient(t *testing.T) {
 					t.Fatalf("Failed to unmarshal user: %v", err)
 				}
 				if user.SubID != tt.wantSubID {
-					t.Errorf("getUserFromClient() subID = %s, want %s", user.SubID, tt.wantSubID)
+					t.Errorf("GetUser() subID = %s, want %s", user.SubID, tt.wantSubID)
 				}
 			}
 		})
 	}
 }
 
-// TestCreateUserWithClient tests createUserWithClient.
+// TestCreateUserWithClient tests CreateUser.
 func TestCreateUserWithClient(t *testing.T) {
 	mockClient := &mockUserSingBoxClient{
 		inbounds: []models.Inbound{
@@ -1045,10 +1128,10 @@ func TestCreateUserWithClient(t *testing.T) {
 			req.Header.Set("Content-Type", "application/json")
 			w := httptest.NewRecorder()
 
-			handler.createUserWithClient(w, req)
+			handler.CreateUser(w, req)
 
 			if w.Code != tt.wantStatus {
-				t.Errorf("createUserWithClient() status = %d, want %d", w.Code, tt.wantStatus)
+				t.Errorf("CreateUser() status = %d, want %d", w.Code, tt.wantStatus)
 			}
 
 			if tt.wantErrorCode != "" {
@@ -1057,7 +1140,7 @@ func TestCreateUserWithClient(t *testing.T) {
 					t.Fatalf("Failed to decode response: %v", err)
 				}
 				if resp.Error.Code != tt.wantErrorCode {
-					t.Errorf("createUserWithClient() error code = %s, want %s", resp.Error.Code, tt.wantErrorCode)
+					t.Errorf("CreateUser() error code = %s, want %s", resp.Error.Code, tt.wantErrorCode)
 				}
 			} else if tt.wantSubID != "" {
 				var resp SuccessResponse
@@ -1070,17 +1153,17 @@ func TestCreateUserWithClient(t *testing.T) {
 					t.Fatalf("Failed to unmarshal user: %v", err)
 				}
 				if user.SubID != tt.wantSubID {
-					t.Errorf("createUserWithClient() subID = %s, want %s", user.SubID, tt.wantSubID)
+					t.Errorf("CreateUser() subID = %s, want %s", user.SubID, tt.wantSubID)
 				}
 				if user.UUID == "" {
-					t.Errorf("createUserWithClient() UUID should be set")
+					t.Errorf("CreateUser() UUID should be set")
 				}
 			}
 		})
 	}
 }
 
-// TestUpdateUserWithClient tests updateUserWithClient.
+// TestUpdateUserWithClient tests UpdateUser.
 func TestUpdateUserWithClient(t *testing.T) {
 	mockClient := &mockUserSingBoxClient{
 		users: []models.User{
@@ -1177,10 +1260,10 @@ func TestUpdateUserWithClient(t *testing.T) {
 			req.Header.Set("Content-Type", "application/json")
 			w := httptest.NewRecorder()
 
-			handler.updateUserWithClient(w, req)
+			handler.UpdateUser(w, req)
 
 			if w.Code != tt.wantStatus {
-				t.Errorf("updateUserWithClient() status = %d, want %d", w.Code, tt.wantStatus)
+				t.Errorf("UpdateUser() status = %d, want %d", w.Code, tt.wantStatus)
 			}
 
 			if tt.wantErrorCode != "" {
@@ -1189,7 +1272,7 @@ func TestUpdateUserWithClient(t *testing.T) {
 					t.Fatalf("Failed to decode response: %v", err)
 				}
 				if resp.Error.Code != tt.wantErrorCode {
-					t.Errorf("updateUserWithClient() error code = %s, want %s", resp.Error.Code, tt.wantErrorCode)
+					t.Errorf("UpdateUser() error code = %s, want %s", resp.Error.Code, tt.wantErrorCode)
 				}
 			} else if tt.wantStatus == http.StatusOK {
 				var resp SuccessResponse
@@ -1203,14 +1286,14 @@ func TestUpdateUserWithClient(t *testing.T) {
 				}
 
 				if tt.body.Email != "" && user.Email != tt.body.Email {
-					t.Errorf("updateUserWithClient() email = %s, want %s", user.Email, tt.body.Email)
+					t.Errorf("UpdateUser() email = %s, want %s", user.Email, tt.body.Email)
 				}
 			}
 		})
 	}
 }
 
-// TestDeleteUserWithClient tests deleteUserWithClient.
+// TestDeleteUserWithClient tests DeleteUser.
 func TestDeleteUserWithClient(t *testing.T) {
 	mockClient := &mockUserSingBoxClient{
 		users: []models.User{
@@ -1280,10 +1363,10 @@ func TestDeleteUserWithClient(t *testing.T) {
 			req := httptest.NewRequest(http.MethodDelete, tt.path, nil)
 			w := httptest.NewRecorder()
 
-			handler.deleteUserWithClient(w, req)
+			handler.DeleteUser(w, req)
 
 			if w.Code != tt.wantStatus {
-				t.Errorf("deleteUserWithClient() status = %d, want %d", w.Code, tt.wantStatus)
+				t.Errorf("DeleteUser() status = %d, want %d", w.Code, tt.wantStatus)
 			}
 
 			if tt.wantErrorCode != "" {
@@ -1292,7 +1375,7 @@ func TestDeleteUserWithClient(t *testing.T) {
 					t.Fatalf("Failed to decode response: %v", err)
 				}
 				if resp.Error.Code != tt.wantErrorCode {
-					t.Errorf("deleteUserWithClient() error code = %s, want %s", resp.Error.Code, tt.wantErrorCode)
+					t.Errorf("DeleteUser() error code = %s, want %s", resp.Error.Code, tt.wantErrorCode)
 				}
 			}
 		})

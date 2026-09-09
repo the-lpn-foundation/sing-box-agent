@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -9,7 +10,6 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
-	"strings"
 
 	"github.com/oglenyaboss/sing-box-agent/internal/auth"
 )
@@ -27,6 +27,10 @@ const (
 	// HeaderXNonce is the X-Nonce header key.
 	HeaderXNonce = "X-Nonce"
 )
+
+// maxAuthBodySize is the maximum allowed request body size for
+// authenticated requests (10 MiB). Bodies larger than this are rejected.
+const maxAuthBodySize = 10 << 20
 
 // ErrorCode represents an API error code.
 type ErrorCode string
@@ -145,17 +149,9 @@ func authenticateRequest(config AuthConfig, r *http.Request) error {
 		}
 	}
 
-	// Check nonce for replay attack
-	if err := config.NonceCache.CheckAndStoreNonce(nonce); err != nil {
-		return &AuthError{
-			Code:    CodeReplayDetected,
-			Message: fmt.Sprintf("Replay attack detected: %v", err),
-			Err:     err,
-		}
-	}
-
-	// Read request body for hash computation
-	body, err := io.ReadAll(r.Body)
+	// Read request body for hash computation (with size limit to prevent
+	// memory exhaustion from oversized bodies).
+	body, err := io.ReadAll(io.LimitReader(r.Body, maxAuthBodySize+1))
 	if err != nil {
 		return &AuthError{
 			Code:    CodeUnauthorized,
@@ -164,8 +160,15 @@ func authenticateRequest(config AuthConfig, r *http.Request) error {
 		}
 	}
 
+	if len(body) > maxAuthBodySize {
+		return &AuthError{
+			Code:    CodeUnauthorized,
+			Message: "Request body too large",
+		}
+	}
+
 	// Restore body for downstream handlers
-	r.Body = io.NopCloser(strings.NewReader(string(body)))
+	r.Body = io.NopCloser(bytes.NewReader(body))
 
 	// Compute body hash
 	bodyHash := auth.ComputeBodyHash(body)
@@ -184,6 +187,17 @@ func authenticateRequest(config AuthConfig, r *http.Request) error {
 		return &AuthError{
 			Code:    CodeUnauthorized,
 			Message: "Invalid signature",
+			Err:     err,
+		}
+	}
+
+	// Check nonce for replay attack. This must be the LAST step, after the
+	// signature is verified, so that requests with invalid signatures cannot
+	// burn nonce-cache entries and open eviction-based replay windows.
+	if err := config.NonceCache.CheckAndStoreNonce(nonce); err != nil {
+		return &AuthError{
+			Code:    CodeReplayDetected,
+			Message: fmt.Sprintf("Replay attack detected: %v", err),
 			Err:     err,
 		}
 	}
