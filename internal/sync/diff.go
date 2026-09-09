@@ -1,7 +1,7 @@
 package sync
 
 import (
-	"github.com/oglenyaboss/sing-box-agent/internal/models"
+	"github.com/the-lpn-foundation/sing-box-agent/internal/models"
 )
 
 // ChangeType represents the type of change to apply.

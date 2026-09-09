@@ -8,8 +8,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/oglenyaboss/sing-box-agent/internal/cfglock"
-	"github.com/oglenyaboss/sing-box-agent/internal/models"
+	"github.com/the-lpn-foundation/sing-box-agent/internal/cfglock"
+	"github.com/the-lpn-foundation/sing-box-agent/internal/models"
 )
 
 type ConfigManager struct {

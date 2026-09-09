@@ -2,7 +2,7 @@
 
 ## Bugs and feature requests
 
-Open a [GitHub Issue](https://github.com/oglenyaboss/sing-box-agent/issues).
+Open a [GitHub Issue](https://github.com/the-lpn-foundation/sing-box-agent/issues).
 Please include the agent version, a minimal reproduction (config snippet,
 `curl` command, expected vs actual output), and relevant log lines —
 **redact tokens and secrets**. See
@@ -27,6 +27,6 @@ Setup, deployment, and API documentation lives in the
 ## Questions and discussions
 
 For usage questions and ideas, use GitHub
-[Discussions](https://github.com/oglenyaboss/sing-box-agent/discussions) if
+[Discussions](https://github.com/the-lpn-foundation/sing-box-agent/discussions) if
 they are enabled for this repository; otherwise ask in an issue with the
 `question` label.

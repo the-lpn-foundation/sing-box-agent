@@ -19,8 +19,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/oglenyaboss/sing-box-agent/internal/models"
-	pkgsync "github.com/oglenyaboss/sing-box-agent/internal/sync"
+	"github.com/the-lpn-foundation/sing-box-agent/internal/models"
+	pkgsync "github.com/the-lpn-foundation/sing-box-agent/internal/sync"
 )
 
 // Parallel CRUD + desired-state writes to one file must not lose updates:

@@ -15,8 +15,8 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/oglenyaboss/sing-box-agent/internal/cfglock"
-	"github.com/oglenyaboss/sing-box-agent/internal/models"
+	"github.com/the-lpn-foundation/sing-box-agent/internal/cfglock"
+	"github.com/the-lpn-foundation/sing-box-agent/internal/models"
 )
 
 // Reloader triggers sing-box to pick up a new configuration from disk.

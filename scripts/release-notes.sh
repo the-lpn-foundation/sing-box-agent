@@ -34,7 +34,7 @@ echo "pre-built binaries under the MIT license. Build from the attached"
 echo "source tarball:"
 echo
 echo '```bash'
-echo "curl -L https://github.com/oglenyaboss/sing-box-agent/archive/refs/tags/${tag_name}.tar.gz | tar xz"
+echo "curl -L https://github.com/the-lpn-foundation/sing-box-agent/archive/refs/tags/${tag_name}.tar.gz | tar xz"
 echo "cd sing-box-agent-${tag_name#v}"
 echo "make build"
 echo '```'

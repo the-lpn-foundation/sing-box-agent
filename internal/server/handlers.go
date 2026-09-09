@@ -5,8 +5,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/oglenyaboss/sing-box-agent/internal/singbox"
-	syncpkg "github.com/oglenyaboss/sing-box-agent/internal/sync"
+	"github.com/the-lpn-foundation/sing-box-agent/internal/singbox"
+	syncpkg "github.com/the-lpn-foundation/sing-box-agent/internal/sync"
 )
 
 // HealthHandler returns 200 OK with "OK" body.

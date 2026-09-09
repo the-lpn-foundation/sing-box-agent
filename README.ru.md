@@ -41,7 +41,7 @@ sing-box. Можно запустить в одиночку на одной но
 
 ```bash
 # 1. Собрать агент (sing-box всё ещё нужен отдельно на хосте).
-git clone https://github.com/oglenyaboss/sing-box-agent
+git clone https://github.com/the-lpn-foundation/sing-box-agent
 cd sing-box-agent
 make build
 

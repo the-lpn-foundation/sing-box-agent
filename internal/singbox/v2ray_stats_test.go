@@ -9,7 +9,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/encoding"
 
-	v2rayapi "github.com/oglenyaboss/sing-box-agent/internal/v2rayapi"
+	v2rayapi "github.com/the-lpn-foundation/sing-box-agent/internal/v2rayapi"
 )
 
 // The gRPC server resolves codecs by content subtype ("proto") in a global

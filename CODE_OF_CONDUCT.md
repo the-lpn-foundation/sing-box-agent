@@ -53,7 +53,7 @@ public spaces.
 ## Enforcement
 
 Instances of abusive, harassing, or otherwise unacceptable behavior may be
-reported through [GitHub Issues](https://github.com/oglenyaboss/sing-box-agent/issues)
+reported through [GitHub Issues](https://github.com/the-lpn-foundation/sing-box-agent/issues)
 of this repository. For security-sensitive conduct reports, see
 [SECURITY.md](./SECURITY.md). All complaints will be reviewed and investigated
 promptly and fairly.

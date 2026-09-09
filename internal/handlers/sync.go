@@ -6,8 +6,8 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/oglenyaboss/sing-box-agent/internal/models"
-	syncpkg "github.com/oglenyaboss/sing-box-agent/internal/sync"
+	"github.com/the-lpn-foundation/sing-box-agent/internal/models"
+	syncpkg "github.com/the-lpn-foundation/sing-box-agent/internal/sync"
 )
 
 const (

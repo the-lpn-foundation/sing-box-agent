@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/oglenyaboss/sing-box-agent/internal/models"
+	"github.com/the-lpn-foundation/sing-box-agent/internal/models"
 )
 
 var ErrVersionConflict = fmt.Errorf("version conflict")

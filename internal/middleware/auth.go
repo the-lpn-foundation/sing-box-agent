@@ -11,7 +11,7 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/oglenyaboss/sing-box-agent/internal/auth"
+	"github.com/the-lpn-foundation/sing-box-agent/internal/auth"
 )
 
 const (

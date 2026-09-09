@@ -74,5 +74,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   The Docker image bundles the GPLv3 sing-box executable (aggregation);
   see README "License".
 
-[Unreleased]: https://github.com/oglenyaboss/sing-box-agent/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/oglenyaboss/sing-box-agent/releases/tag/v0.1.0
+[Unreleased]: https://github.com/the-lpn-foundation/sing-box-agent/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/the-lpn-foundation/sing-box-agent/releases/tag/v0.1.0

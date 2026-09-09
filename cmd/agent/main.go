@@ -11,11 +11,11 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/oglenyaboss/sing-box-agent/internal/client"
-	"github.com/oglenyaboss/sing-box-agent/internal/config"
-	"github.com/oglenyaboss/sing-box-agent/internal/metrics"
-	"github.com/oglenyaboss/sing-box-agent/internal/server"
-	"github.com/oglenyaboss/sing-box-agent/internal/singbox"
+	"github.com/the-lpn-foundation/sing-box-agent/internal/client"
+	"github.com/the-lpn-foundation/sing-box-agent/internal/config"
+	"github.com/the-lpn-foundation/sing-box-agent/internal/metrics"
+	"github.com/the-lpn-foundation/sing-box-agent/internal/server"
+	"github.com/the-lpn-foundation/sing-box-agent/internal/singbox"
 )
 
 var (

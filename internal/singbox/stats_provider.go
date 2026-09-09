@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/oglenyaboss/sing-box-agent/internal/models"
+	"github.com/the-lpn-foundation/sing-box-agent/internal/models"
 )
 
 // StatsProviderAdapter bridges sing-box data to the handlers.StatsProvider interface.

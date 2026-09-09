@@ -10,7 +10,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/oglenyaboss/sing-box-agent/internal/store"
+	"github.com/the-lpn-foundation/sing-box-agent/internal/store"
 )
 
 const (

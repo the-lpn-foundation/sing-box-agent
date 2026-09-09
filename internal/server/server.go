@@ -14,14 +14,14 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/oglenyaboss/sing-box-agent/internal/auth"
-	"github.com/oglenyaboss/sing-box-agent/internal/client"
-	"github.com/oglenyaboss/sing-box-agent/internal/config"
-	"github.com/oglenyaboss/sing-box-agent/internal/handlers"
-	"github.com/oglenyaboss/sing-box-agent/internal/middleware"
-	"github.com/oglenyaboss/sing-box-agent/internal/singbox"
-	"github.com/oglenyaboss/sing-box-agent/internal/store"
-	syncpkg "github.com/oglenyaboss/sing-box-agent/internal/sync"
+	"github.com/the-lpn-foundation/sing-box-agent/internal/auth"
+	"github.com/the-lpn-foundation/sing-box-agent/internal/client"
+	"github.com/the-lpn-foundation/sing-box-agent/internal/config"
+	"github.com/the-lpn-foundation/sing-box-agent/internal/handlers"
+	"github.com/the-lpn-foundation/sing-box-agent/internal/middleware"
+	"github.com/the-lpn-foundation/sing-box-agent/internal/singbox"
+	"github.com/the-lpn-foundation/sing-box-agent/internal/store"
+	syncpkg "github.com/the-lpn-foundation/sing-box-agent/internal/sync"
 )
 
 const (

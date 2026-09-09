@@ -19,8 +19,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/oglenyaboss/sing-box-agent/internal/auth"
-	"github.com/oglenyaboss/sing-box-agent/internal/config"
+	"github.com/the-lpn-foundation/sing-box-agent/internal/auth"
+	"github.com/the-lpn-foundation/sing-box-agent/internal/config"
 )
 
 // testConfig returns a valid test configuration

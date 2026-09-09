@@ -6,7 +6,7 @@ it onto any Linux box and manage users, inbounds, and subscriptions with
 `curl` — no panel, no SSH, no database.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
-![Go version](https://img.shields.io/github/go-mod/go-version/oglenyaboss/sing-box-agent?filename=go.mod)
+![Go version](https://img.shields.io/github/go-mod/go-version/the-lpn-foundation/sing-box-agent?filename=go.mod)
 
 > Русскоязычная версия README: [README.ru.md](./README.ru.md)
 
@@ -72,7 +72,7 @@ plane. You manage users and inbounds with `curl`.
 ```bash
 # 1. Build the agent (it does not link sing-box; a sing-box runtime
 #    binary must still be installed separately on the host).
-git clone https://github.com/oglenyaboss/sing-box-agent
+git clone https://github.com/the-lpn-foundation/sing-box-agent
 cd sing-box-agent
 make build
 

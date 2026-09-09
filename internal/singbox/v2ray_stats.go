@@ -8,7 +8,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
-	v2rayapi "github.com/oglenyaboss/sing-box-agent/internal/v2rayapi"
+	v2rayapi "github.com/the-lpn-foundation/sing-box-agent/internal/v2rayapi"
 )
 
 // statsServiceFullMethod is the QueryStats method path of the sing-box

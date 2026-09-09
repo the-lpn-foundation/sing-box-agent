@@ -7,7 +7,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/oglenyaboss/sing-box-agent/internal/singbox"
+	"github.com/the-lpn-foundation/sing-box-agent/internal/singbox"
 )
 
 // StatsCollectionInterval is how often inbound traffic counters are refreshed.
