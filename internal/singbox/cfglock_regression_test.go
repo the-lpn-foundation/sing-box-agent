@@ -46,11 +46,11 @@ func TestConfigClient_And_ConfigManager_NoLostUpdate(t *testing.T) {
 		wg.Add(2)
 		go func(idx int) {
 			defer wg.Done()
-			errCh <- client.CreateUser(context.Background(), models_UserForIdx(idx, "crud"))
+			errCh <- client.CreateUser(context.Background(), modelsUserForIdx(idx, "crud"))
 		}(i)
 		go func(idx int) {
 			defer wg.Done()
-			errCh <- manager.AddUser("in-1", models_UserForIdx(idx, "mgr"))
+			errCh <- manager.AddUser("in-1", modelsUserForIdx(idx, "mgr"))
 		}(i)
 	}
 	wg.Wait()
@@ -151,9 +151,9 @@ func fileUserNames(t *testing.T, path string) map[string]bool {
 	return names
 }
 
-// models_UserForIdx builds a distinct user for the concurrency tests so the
+// modelsUserForIdx builds a distinct user for the concurrency tests so the
 // two writers never collide on the same subID.
-func models_UserForIdx(idx int, prefix string) models.User {
+func modelsUserForIdx(idx int, prefix string) models.User {
 	return models.User{
 		InboundTag: "in-1",
 		SubID:      fmt.Sprintf("%s-%d", prefix, idx),

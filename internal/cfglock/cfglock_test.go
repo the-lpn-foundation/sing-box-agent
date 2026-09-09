@@ -47,7 +47,9 @@ func TestFor_MapsPathsToMutexes(t *testing.T) {
 	}
 
 	abs := filepath.Join(t.TempDir(), "config.json")
-	if For(abs) != For(abs) {
+	first := For(abs)
+	second := For(abs)
+	if first != second {
 		t.Fatal("same path must map to the same mutex")
 	}
 }
