@@ -29,9 +29,9 @@ fi
 echo
 echo "### How to install"
 echo
-echo "This project is source-only — sing-box is GPLv3, so we do not ship"
-echo "pre-built binaries under the MIT license. Build from the attached"
-echo "source tarball:"
+echo "This project currently ships source only. Since 0.3.0 the agent",
+echo "no longer links sing-box and the built binary is MIT-only — build",
+echo "from the source tarball:"
 echo
 echo '```bash'
 echo "curl -L https://github.com/the-lpn-foundation/sing-box-agent/archive/refs/tags/${tag_name}.tar.gz | tar xz"
