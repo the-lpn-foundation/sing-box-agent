@@ -2011,63 +2011,52 @@ func TestSyncStatsUsers(t *testing.T) {
 	assert.False(t, ok)
 }
 
-// TestBuildProtocolUser_EmailAndEnabled verifies that buildProtocolUser keeps
-// email/enabled in sync with the ConfigManager (sync) path: user email is
-// written, existing email is preserved on update when the request has none,
-// and enabled is always written.
-func TestBuildProtocolUser_EmailAndEnabled(t *testing.T) {
+// TestBuildProtocolUser_SchemaStrict verifies that buildProtocolUser emits
+// ONLY fields the sing-box user schema knows for typed protocols.
+// email/enabled are agent-namespace bookkeeping: sing-box strict-decodes
+// config.json and rejects unknown user fields with FATAL, taking down the
+// whole inbound set (incident 2026-09-13: ghost-pool refill wrote users with
+// email+enabled → config undecodable → 4h outage on all nodes).
+func TestBuildProtocolUser_SchemaStrict(t *testing.T) {
 	tests := []struct {
 		name        string
 		inboundType string
 		user        models.User
 		existing    map[string]interface{}
-		wantEmail   interface{}
-		wantEnabled bool
+		want        map[string]interface{}
 	}{
 		{
-			name:        "vless with email",
+			name:        "vless with email and enabled in request",
 			inboundType: "vless",
 			user:        models.User{SubID: "user1", UUID: "uuid1", Email: "user@example.com", Enabled: true},
-			wantEmail:   "user@example.com",
-			wantEnabled: true,
+			want:        map[string]interface{}{"name": "user1", "uuid": "uuid1"},
 		},
 		{
-			name:        "vless preserves existing email on empty",
+			name:        "vless strips legacy email from existing",
 			inboundType: "vless",
 			user:        models.User{SubID: "user1", UUID: "uuid1", Enabled: false},
-			existing:    map[string]interface{}{"email": "old@example.com", "uuid": "uuid1"},
-			wantEmail:   "old@example.com",
-			wantEnabled: false,
+			existing:    map[string]interface{}{"email": "old@example.com", "enabled": true, "uuid": "uuid1"},
+			want:        map[string]interface{}{"name": "user1", "uuid": "uuid1"},
 		},
 		{
-			name:        "hysteria2 with email",
+			name:        "hysteria2 with email and disabled",
 			inboundType: "hysteria2",
-			user:        models.User{SubID: "user1", UUID: "pass", Email: "user@example.com", Enabled: true},
-			wantEmail:   "user@example.com",
-			wantEnabled: true,
+			user:        models.User{SubID: "user1", UUID: "pass", Email: "user@example.com", Enabled: false},
+			want:        map[string]interface{}{"name": "user1", "password": "pass"},
 		},
 		{
-			name:        "hysteria2 preserves existing email on empty",
+			name:        "hysteria2 strips legacy email from existing",
 			inboundType: "hysteria2",
-			user:        models.User{SubID: "user1", UUID: "pass", Enabled: false},
-			existing:    map[string]interface{}{"email": "old@example.com", "password": "pass"},
-			wantEmail:   "old@example.com",
-			wantEnabled: false,
-		},
-		{
-			name:        "vless without any email",
-			inboundType: "vless",
-			user:        models.User{SubID: "user1", UUID: "uuid1", Enabled: true},
-			wantEmail:   nil,
-			wantEnabled: true,
+			user:        models.User{SubID: "user1", UUID: "pass"},
+			existing:    map[string]interface{}{"email": "old@example.com", "enabled": true, "password": "pass"},
+			want:        map[string]interface{}{"name": "user1", "password": "pass"},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := buildProtocolUser(tt.inboundType, tt.user, tt.existing)
-			assert.Equal(t, tt.wantEmail, result["email"])
-			assert.Equal(t, tt.wantEnabled, result["enabled"])
+			assert.Equal(t, tt.want, result)
 		})
 	}
 }

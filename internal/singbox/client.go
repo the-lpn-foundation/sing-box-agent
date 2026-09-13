@@ -551,12 +551,6 @@ func buildProtocolUser(inboundType string, user models.User, existing map[string
 		} else if flow := getString(existing, "flow"); flow != "" {
 			result["flow"] = flow
 		}
-		if user.Email != "" {
-			result["email"] = user.Email
-		} else if email := getString(existing, "email"); email != "" {
-			result["email"] = email
-		}
-		result["enabled"] = user.Enabled
 		return result
 
 	case "hysteria2", "shadowtls", "shadowsocks", "trojan", "tuic":
@@ -576,12 +570,6 @@ func buildProtocolUser(inboundType string, user models.User, existing map[string
 			"name":     name,
 			"password": password,
 		}
-		if user.Email != "" {
-			result["email"] = user.Email
-		} else if email := getString(existing, "email"); email != "" {
-			result["email"] = email
-		}
-		result["enabled"] = user.Enabled
 		return result
 	}
 
