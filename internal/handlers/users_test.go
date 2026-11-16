@@ -186,7 +186,7 @@ func (f *fakeUserStore) UpdateUser(ctx context.Context, user models.User) error 
 	return nil
 }
 
-func (f *fakeUserStore) DeleteUser(ctx context.Context, subID string) error {
+func (f *fakeUserStore) DeleteUser(ctx context.Context, _, subID string) error {
 	if _, exists := f.users[subID]; !exists {
 		return fmt.Errorf("user with subID %s not found", subID)
 	}
@@ -1662,7 +1662,7 @@ func (m *mockUserSingBoxClient) UpdateUser(ctx context.Context, user models.User
 	return errors.New("user not found")
 }
 
-func (m *mockUserSingBoxClient) DeleteUser(ctx context.Context, subID string) error {
+func (m *mockUserSingBoxClient) DeleteUser(ctx context.Context, _, subID string) error {
 	if m.failOnDelete {
 		return errors.New("delete user error")
 	}

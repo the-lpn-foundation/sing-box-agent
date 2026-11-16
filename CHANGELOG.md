@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- `DELETE /inbounds/{tag}/users/{subId}` removed the user from every inbound
+  sharing the subId, not only from `{tag}`. Deleting one inbound's record
+  emptied the others (2026-11-16 outage: reality/hy2 cleanup wiped
+  `vless-ws-cf-in` on all nodes). `DeleteUser` now takes the inbound tag.
+
 ## [0.3.0] - 2026-09-09
 
 ### Added

@@ -26,7 +26,7 @@ type SingBoxClient interface {
 	DeleteInbound(ctx context.Context, tag string) error
 	CreateUser(ctx context.Context, user models.User) error
 	UpdateUser(ctx context.Context, user models.User) error
-	DeleteUser(ctx context.Context, subID string) error
+	DeleteUser(ctx context.Context, inboundTag, subID string) error
 }
 
 // NewEngine creates a new sync engine.

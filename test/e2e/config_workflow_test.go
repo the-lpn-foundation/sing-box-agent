@@ -123,7 +123,7 @@ func (m *MockSingBoxConfigE2E) UpdateUser(ctx context.Context, user models.User)
 	return nil
 }
 
-func (m *MockSingBoxConfigE2E) DeleteUser(ctx context.Context, subID string) error {
+func (m *MockSingBoxConfigE2E) DeleteUser(ctx context.Context, _, subID string) error {
 	return nil
 }
 
