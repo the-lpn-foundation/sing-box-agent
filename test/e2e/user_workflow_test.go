@@ -86,7 +86,7 @@ func (m *MockSingBoxE2E) UpdateUser(ctx context.Context, user models.User) error
 	return errors.New("USER_NOT_FOUND: User not found")
 }
 
-func (m *MockSingBoxE2E) DeleteUser(ctx context.Context, subID string) error {
+func (m *MockSingBoxE2E) DeleteUser(ctx context.Context, _, subID string) error {
 	for i, existing := range m.users {
 		if existing.SubID == subID {
 			m.users = append(m.users[:i], m.users[i+1:]...)

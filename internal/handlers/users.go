@@ -334,7 +334,7 @@ func (h *UserHandler) DeleteUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.singbox.DeleteUser(r.Context(), subID); err != nil {
+	if err := h.singbox.DeleteUser(r.Context(), inboundTag, subID); err != nil {
 		h.mapClientError(w, err)
 		return
 	}

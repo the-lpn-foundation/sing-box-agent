@@ -78,7 +78,7 @@ func (m *mockSingBoxClient) UpdateUser(ctx context.Context, user models.User) er
 	return nil
 }
 
-func (m *mockSingBoxClient) DeleteUser(ctx context.Context, subID string) error {
+func (m *mockSingBoxClient) DeleteUser(ctx context.Context, _, subID string) error {
 	return nil
 }
 

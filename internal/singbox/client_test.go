@@ -941,12 +941,13 @@ func TestConfigClient_UpdateUser(t *testing.T) {
 
 func TestConfigClient_DeleteUser(t *testing.T) {
 	tests := []struct {
-		name    string
-		setup   func(t *testing.T) string
-		subID   string
-		wantErr bool
-		errMsg  string
-		check   func(t *testing.T, path string)
+		name       string
+		setup      func(t *testing.T) string
+		inboundTag string
+		subID      string
+		wantErr    bool
+		errMsg     string
+		check      func(t *testing.T, path string)
 	}{
 		{
 			name: "delete existing user",
@@ -969,8 +970,9 @@ func TestConfigClient_DeleteUser(t *testing.T) {
 				require.NoError(t, err)
 				return path
 			},
-			subID:   "user1",
-			wantErr: false,
+			inboundTag: "in-1",
+			subID:      "user1",
+			wantErr:    false,
 			check: func(t *testing.T, path string) {
 				data, err := os.ReadFile(path)
 				require.NoError(t, err)
@@ -1001,12 +1003,44 @@ func TestConfigClient_DeleteUser(t *testing.T) {
 				require.NoError(t, err)
 				return path
 			},
-			subID:   "nonexistent",
-			wantErr: true,
-			errMsg:  "not found",
+			inboundTag: "in-1",
+			subID:      "nonexistent",
+			wantErr:    true,
+			errMsg:     "not found",
 		},
 		{
-			name: "delete user from multiple inbounds",
+			name: "inbound not found",
+			setup: func(t *testing.T) string {
+				dir := t.TempDir()
+				path := filepath.Join(dir, "config.json")
+				config := `{"inbounds": [{"type": "vless", "tag": "in-1", "users": [{"uuid": "11111111-1111-1111-1111-111111111111", "name": "user1"}]}]}`
+				require.NoError(t, os.WriteFile(path, []byte(config), 0o644))
+				return path
+			},
+			inboundTag: "in-missing",
+			subID:      "user1",
+			wantErr:    true,
+			errMsg:     "inbound with tag in-missing not found",
+		},
+		{
+			name: "user present only in another inbound",
+			setup: func(t *testing.T) string {
+				dir := t.TempDir()
+				path := filepath.Join(dir, "config.json")
+				config := `{"inbounds": [
+					{"type": "vless", "tag": "in-1", "users": [{"uuid": "11111111-1111-1111-1111-111111111111", "name": "user1"}]},
+					{"type": "hysteria2", "tag": "in-2", "users": []}
+				]}`
+				require.NoError(t, os.WriteFile(path, []byte(config), 0o644))
+				return path
+			},
+			inboundTag: "in-2",
+			subID:      "user1",
+			wantErr:    true,
+			errMsg:     "not found",
+		},
+		{
+			name: "delete user only from the given inbound",
 			setup: func(t *testing.T) string {
 				dir := t.TempDir()
 				path := filepath.Join(dir, "config.json")
@@ -1032,8 +1066,9 @@ func TestConfigClient_DeleteUser(t *testing.T) {
 				require.NoError(t, err)
 				return path
 			},
-			subID:   "user1",
-			wantErr: false,
+			inboundTag: "in-2",
+			subID:      "user1",
+			wantErr:    false,
 			check: func(t *testing.T, path string) {
 				data, err := os.ReadFile(path)
 				require.NoError(t, err)
@@ -1041,11 +1076,13 @@ func TestConfigClient_DeleteUser(t *testing.T) {
 				err = json.Unmarshal(data, &result)
 				require.NoError(t, err)
 				inbounds := result["inbounds"].([]interface{}) //nolint:errcheck
-				for _, inboundAny := range inbounds {
-					inbound := inboundAny.(map[string]interface{}) //nolint:errcheck
-					users := inbound["users"].([]interface{})      //nolint:errcheck
-					assert.Len(t, users, 0)
+				usersOf := func(i int) []interface{} {
+					inbound := inbounds[i].(map[string]interface{}) //nolint:errcheck
+					users, _ := inbound["users"].([]interface{})
+					return users
 				}
+				assert.Len(t, usersOf(0), 1, "user must stay in the other inbound")
+				assert.Len(t, usersOf(1), 0)
 			},
 		},
 	}
@@ -1054,7 +1091,7 @@ func TestConfigClient_DeleteUser(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			path := tt.setup(t)
 			client := NewConfigClient(path)
-			err := client.DeleteUser(context.Background(), tt.subID)
+			err := client.DeleteUser(context.Background(), tt.inboundTag, tt.subID)
 
 			if tt.wantErr {
 				require.Error(t, err)

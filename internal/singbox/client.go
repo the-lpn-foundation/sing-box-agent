@@ -351,7 +351,7 @@ func (c *ConfigClient) UpdateUser(ctx context.Context, user models.User) error {
 	return c.saveAndReload(ctx, root)
 }
 
-func (c *ConfigClient) DeleteUser(ctx context.Context, subID string) error {
+func (c *ConfigClient) DeleteUser(ctx context.Context, inboundTag, subID string) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -364,35 +364,30 @@ func (c *ConfigClient) DeleteUser(ctx context.Context, subID string) error {
 	}
 
 	rawInbounds := getInbounds(root)
+	idx := findInboundIndex(rawInbounds, inboundTag)
+	if idx < 0 {
+		return fmt.Errorf("inbound with tag %s not found", inboundTag)
+	}
+
+	inbound := rawInbounds[idx]
+	users := getInboundUsers(inbound)
+	filtered := make([]interface{}, 0, len(users))
 	removed := false
-	for i, inbound := range rawInbounds {
-		users := getInboundUsers(inbound)
-		if len(users) == 0 {
+	for _, existingAny := range users {
+		u, ok := existingAny.(map[string]interface{})
+		if ok && userMatchesSubID(u, subID) {
+			removed = true
 			continue
 		}
-
-		filtered := make([]interface{}, 0, len(users))
-		removedHere := false
-		for _, existingAny := range users {
-			u, ok := existingAny.(map[string]interface{})
-			if ok && userMatchesSubID(u, subID) {
-				removedHere = true
-				removed = true
-				continue
-			}
-			filtered = append(filtered, existingAny)
-		}
-
-		if removedHere {
-			setInboundUsers(inbound, filtered)
-			rawInbounds[i] = inbound
-		}
+		filtered = append(filtered, existingAny)
 	}
 
 	if !removed {
 		return fmt.Errorf("user with subID %s not found", subID)
 	}
 
+	setInboundUsers(inbound, filtered)
+	rawInbounds[idx] = inbound
 	setInbounds(root, rawInbounds)
 	return c.saveAndReload(ctx, root)
 }

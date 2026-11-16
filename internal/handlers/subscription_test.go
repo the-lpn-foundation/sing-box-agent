@@ -61,7 +61,7 @@ func (m *mockSubscriptionSingBoxClient) UpdateUser(_ context.Context, _ models.U
 	return nil
 }
 
-func (m *mockSubscriptionSingBoxClient) DeleteUser(_ context.Context, _ string) error {
+func (m *mockSubscriptionSingBoxClient) DeleteUser(_ context.Context, _, _ string) error {
 	return nil
 }
 
